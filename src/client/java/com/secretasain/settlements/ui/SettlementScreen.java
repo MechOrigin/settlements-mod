@@ -2,6 +2,7 @@ package com.secretasain.settlements.ui;
 
 import com.secretasain.settlements.network.ActivateBuildModePacketClient;
 import com.secretasain.settlements.settlement.Settlement;
+import com.secretasain.settlements.settlement.VillagerData;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -41,12 +42,17 @@ public class SettlementScreen extends Screen {
     // Building list widget (for viewing existing buildings)
     private BuildingListWidget buildingListWidget;
     
+    // Building selection widget (for work assignment)
+    private BuildingSelectionWidget buildingSelectionWidget;
+    private boolean showingBuildingSelection = false;
+    
     // Building action buttons
     private ButtonWidget cancelBuildingButton;
     private ButtonWidget removeBuildingButton;
     private ButtonWidget startBuildingButton;
     private ButtonWidget checkMaterialsButton;
     private ButtonWidget unloadInventoryButton;
+    private ButtonWidget refreshVillagersButton;
     
     // Material display widget
     private MaterialListWidget materialListWidget;
@@ -119,9 +125,50 @@ public class SettlementScreen extends Screen {
             listHeight,
             listY,
             y + screenHeight - 5,
-            24, // Increased item height for better spacing
+            50, // Increased item height to prevent overlapping text
             settlement.getVillagers()
         );
+        // Set hire/fire callbacks
+        villagerListWidget.setOnHireCallback(villager -> {
+            com.secretasain.settlements.network.HireFireVillagerPacketClient.send(
+                villager.getEntityId(), 
+                settlement.getId(), 
+                true
+            );
+            // Refresh the list after a short delay to get updated data
+            this.client.execute(() -> {
+                villagerListWidget.updateEntries();
+            });
+        });
+        villagerListWidget.setOnFireCallback(villager -> {
+            com.secretasain.settlements.network.HireFireVillagerPacketClient.send(
+                villager.getEntityId(), 
+                settlement.getId(), 
+                false
+            );
+            // Refresh the list after a short delay to get updated data
+            this.client.execute(() -> {
+                villagerListWidget.updateEntries();
+            });
+        });
+        villagerListWidget.setOnAssignWorkCallback((villager, buildingId) -> {
+            if (villager.isAssigned() && buildingId != null) {
+                // Unassign from current building
+                com.secretasain.settlements.network.AssignWorkPacketClient.send(
+                    settlement.getId(),
+                    villager.getEntityId(),
+                    buildingId, // Current building ID
+                    false
+                );
+                // Refresh the list after a short delay to get updated data
+                this.client.execute(() -> {
+                    villagerListWidget.updateEntries();
+                });
+            } else if (!villager.isAssigned() && buildingId == null) {
+                // Show building selection dialog
+                showBuildingSelectionDialog(villager);
+            }
+        });
         this.addDrawableChild(villagerListWidget);
         
         // Structure list widget will be created dynamically when Buildings tab is active
@@ -191,6 +238,29 @@ public class SettlementScreen extends Screen {
         this.addDrawableChild(unloadInventoryButton);
         this.unloadInventoryButton.visible = false;
         this.unloadInventoryButton.active = false;
+        
+        // Create refresh villagers button
+        this.refreshVillagersButton = ButtonWidget.builder(
+            Text.translatable("settlements.ui.villagers.refresh"),
+            button -> {
+                // Trigger villager scan by requesting settlement data refresh
+                // The server will scan and update villager data
+                if (settlement != null) {
+                    // Request settlement data sync (this will trigger a scan)
+                    // For now, just refresh the UI list - actual scan happens server-side periodically
+                    villagerListWidget.updateEntries();
+                    if (this.client != null && this.client.player != null) {
+                        this.client.player.sendMessage(
+                            Text.translatable("settlements.ui.villagers.refresh"), 
+                            false
+                        );
+                    }
+                }
+            }
+        ).dimensions(-1000, -1000, 100, 20).build();
+        this.addDrawableChild(refreshVillagersButton);
+        this.refreshVillagersButton.visible = false;
+        this.refreshVillagersButton.active = false;
         
         // Material list widget will be created dynamically when Buildings tab is active
         this.materialListWidget = null;
@@ -266,7 +336,12 @@ public class SettlementScreen extends Screen {
             }
             
             // Pattern 4: Try direct identifier lookup for known structures
-            String[] knownStructures = {"lvl1_oak_wall.nbt", "lvl2_oak_wall.nbt", "lvl3_oak_wall.nbt"};
+            String[] knownStructures = {
+                "lvl1_oak_wall.nbt", "lvl2_oak_wall.nbt", "lvl3_oak_wall.nbt",
+                "lvl1_oak_cartographer.nbt", "lvl1_oak_farm.nbt", "lvl1_oak_fence.nbt",
+                "lvl1_oak_gate.nbt", "lvl1_oak_smithing.nbt",
+                "lvl1_oak_house.nbt", "lvl2_oak_house.nbt", "lvl3_oak_house.nbt"
+            };
             for (String known : knownStructures) {
                 try {
                     Identifier directId = new Identifier("settlements", "structures/" + known);
@@ -502,6 +577,11 @@ public class SettlementScreen extends Screen {
         // Draw tab content based on active tab - start below info section
         drawTabContent(context, x, infoY + lineHeight * 4 + 8);
         
+        // Draw building selection dialog background if shown (BEFORE super.render so widget appears on top)
+        if (showingBuildingSelection && buildingSelectionWidget != null) {
+            renderBuildingSelectionDialogBackground(context);
+        }
+        
         // CRITICAL: Remove widget from children BEFORE super.render() if it shouldn't be visible
         // This prevents Screen from rendering it even if it's in the children list
         boolean widgetShouldBeVisible = (activeTab == TabType.BUILDINGS) && 
@@ -547,8 +627,13 @@ public class SettlementScreen extends Screen {
             renderStructureSidebar(context, x, y);
         }
         
-        // Call super.render() - this will render all children INCLUDING the widget ON TOP of sidebar
+        // Call super.render() - this will render all children INCLUDING the widget ON TOP of sidebar/dialog
         super.render(context, mouseX, mouseY, delta);
+        
+        // Draw building selection dialog text if shown (AFTER super.render so text appears on top)
+        if (showingBuildingSelection && buildingSelectionWidget != null) {
+            renderBuildingSelectionDialogText(context);
+        }
         
         // Explicitly render material list widget if it exists and is in children
         if (activeTab == TabType.BUILDINGS && materialListWidget != null && this.children().contains(materialListWidget)) {
@@ -570,28 +655,147 @@ public class SettlementScreen extends Screen {
         
         switch (activeTab) {
             case OVERVIEW:
-                // Overview tab - widgets remain visible but not actively used
+                // Overview tab - display settlement information
+                int overviewY = y;
                 context.drawText(
                     this.textRenderer, 
                     Text.translatable("settlements.ui.overview.title"), 
                     x + 10, 
-                    y, 
+                    overviewY, 
                     0xFFFFFF, 
                     false
                 );
+                overviewY += lineHeight + 5;
+                
                 context.drawText(
                     this.textRenderer, 
                     Text.translatable("settlements.ui.overview.welcome", settlement.getName()), 
                     x + 10, 
-                    y + lineHeight, 
+                    overviewY, 
                     0xCCCCCC, 
                     false
                 );
+                overviewY += lineHeight + 5;
+                
+                // Display settlement level
+                com.secretasain.settlements.settlement.SettlementLevel level = settlement.getSettlementLevel();
+                context.drawText(
+                    this.textRenderer,
+                    Text.translatable("settlements.ui.level", level.getDisplayText()),
+                    x + 10,
+                    overviewY,
+                    0xFFFF00,
+                    false
+                );
+                overviewY += lineHeight;
+                
+                // Display level progress/requirements if not max level
+                com.secretasain.settlements.settlement.SettlementLevel nextLevel = settlement.getNextLevel();
+                if (nextLevel != null) {
+                    int villagerCount = settlement.getVillagers().size();
+                    int buildingCount = (int) settlement.getBuildings().stream()
+                        .filter(b -> b.getStatus() == com.secretasain.settlements.building.BuildingStatus.COMPLETED)
+                        .count();
+                    int employedCount = (int) settlement.getVillagers().stream()
+                        .filter(com.secretasain.settlements.settlement.VillagerData::isEmployed)
+                        .count();
+                    
+                    int reqVillagers = nextLevel.getRequiredVillagers();
+                    int reqBuildings = nextLevel.getRequiredBuildings();
+                    int reqEmployed = nextLevel.getRequiredEmployedVillagers();
+                    
+                    int villagerColor = villagerCount >= reqVillagers ? 0x00FF00 : 0xCCCCCC;
+                    int buildingColor = buildingCount >= reqBuildings ? 0x00FF00 : 0xCCCCCC;
+                    int employedColor = employedCount >= reqEmployed ? 0x00FF00 : 0xCCCCCC;
+                    
+                    context.drawText(
+                        this.textRenderer,
+                        Text.translatable("settlements.ui.level.villagers", villagerCount, reqVillagers),
+                        x + 15,
+                        overviewY,
+                        villagerColor,
+                        false
+                    );
+                    overviewY += lineHeight - 2;
+                    
+                    context.drawText(
+                        this.textRenderer,
+                        Text.translatable("settlements.ui.level.buildings", buildingCount, reqBuildings),
+                        x + 15,
+                        overviewY,
+                        buildingColor,
+                        false
+                    );
+                    overviewY += lineHeight - 2;
+                    
+                    context.drawText(
+                        this.textRenderer,
+                        Text.translatable("settlements.ui.level.employed", employedCount, reqEmployed),
+                        x + 15,
+                        overviewY,
+                        employedColor,
+                        false
+                    );
+                    overviewY += lineHeight;
+                } else {
+                    // Max level reached
+                    context.drawText(
+                        this.textRenderer,
+                        Text.translatable("settlements.ui.level.max"),
+                        x + 10,
+                        overviewY,
+                        0x00FF00,
+                        false
+                    );
+                    overviewY += lineHeight;
+                }
+                
+                // Display settlement information
+                context.drawText(
+                    this.textRenderer, 
+                    Text.translatable("settlements.ui.info.settlement", settlement.getName()), 
+                    x + 10, 
+                    overviewY, 
+                    0xCCCCCC, 
+                    false
+                );
+                overviewY += lineHeight;
+                
+                context.drawText(
+                    this.textRenderer, 
+                    Text.translatable("settlements.ui.info.villagers", settlement.getVillagers().size()), 
+                    x + 10, 
+                    overviewY, 
+                    0xCCCCCC, 
+                    false
+                );
+                overviewY += lineHeight;
+                
+                context.drawText(
+                    this.textRenderer, 
+                    Text.translatable("settlements.ui.info.buildings", settlement.getBuildings().size()), 
+                    x + 10, 
+                    overviewY, 
+                    0xCCCCCC, 
+                    false
+                );
+                overviewY += lineHeight;
+                
+                context.drawText(
+                    this.textRenderer, 
+                    Text.translatable("settlements.ui.info.radius", settlement.getRadius()), 
+                    x + 10, 
+                    overviewY, 
+                    0xCCCCCC, 
+                    false
+                );
+                overviewY += lineHeight + 5;
+                
                 context.drawText(
                     this.textRenderer, 
                     Text.translatable("settlements.ui.overview.description"), 
                     x + 10, 
-                    y + lineHeight * 2, 
+                    overviewY, 
                     0xAAAAAA, 
                     false
                 );
@@ -759,6 +963,39 @@ public class SettlementScreen extends Screen {
                 com.secretasain.settlements.SettlementsMod.LOGGER.info("Build Structure button made visible and active. Position: ({}, {})", 
                     buildStructureButton.getX(), buildStructureButton.getY());
             }
+        } else if (tab == TabType.VILLAGERS) {
+            // Position and show villager list widget when Villagers tab is active
+            if (villagerListWidget != null) {
+                int screenWidth = 400;
+                int screenHeight = 280;
+                int x = (this.width - screenWidth) / 2;
+                int listX = x + 10; // Position from left edge
+                
+                // Set the X position (required for rendering - prevents early return in render())
+                villagerListWidget.setLeftPos(listX);
+                
+                // Ensure widget is in children list
+                if (!this.children().contains(villagerListWidget)) {
+                    this.addDrawableChild(villagerListWidget);
+                }
+            }
+            
+            // Position refresh button
+            if (refreshVillagersButton != null) {
+                int screenWidth = 400;
+                int screenHeight = 280;
+                int x = (this.width - screenWidth) / 2;
+                int y = (this.height - screenHeight) / 2;
+                int buttonY = y + 30;
+                int buttonX = x + screenWidth - 110; // Right side
+                refreshVillagersButton.setX(buttonX);
+                refreshVillagersButton.setY(buttonY);
+                refreshVillagersButton.visible = true;
+                refreshVillagersButton.active = true;
+                if (!this.children().contains(refreshVillagersButton)) {
+                    this.addDrawableChild(refreshVillagersButton);
+                }
+            }
             
             // Position check materials button first (unload button needs its position)
             positionCheckMaterialsButton();
@@ -780,6 +1017,20 @@ public class SettlementScreen extends Screen {
             
             // Create and show material list widget if building is selected
             createMaterialListWidget();
+        } else if (tab == TabType.VILLAGERS) {
+            // Show refresh button when Villagers tab is active
+            if (refreshVillagersButton != null) {
+                int screenWidth = 400;
+                int screenHeight = 280;
+                int x = (this.width - screenWidth) / 2;
+                int y = (this.height - screenHeight) / 2;
+                int buttonY = y + 30;
+                int buttonX = x + screenWidth - 110; // Right side
+                refreshVillagersButton.setX(buttonX);
+                refreshVillagersButton.setY(buttonY);
+                refreshVillagersButton.visible = true;
+                refreshVillagersButton.active = true;
+            }
         } else {
             // Completely remove and destroy widgets when not on Buildings tab
             // CRITICAL: Do this FIRST before any other operations
@@ -810,6 +1061,22 @@ public class SettlementScreen extends Screen {
                 cancelBuildingButton.active = false;
                 cancelBuildingButton.setX(-1000);
                 cancelBuildingButton.setY(-1000);
+            }
+            
+            // Widget is already created in init() with correct position
+            // Just ensure it's in children list when Villagers tab is active
+            if (villagerListWidget != null && tab == TabType.VILLAGERS) {
+                if (!this.children().contains(villagerListWidget)) {
+                    this.addDrawableChild(villagerListWidget);
+                }
+            }
+            
+            if (refreshVillagersButton != null && tab != TabType.VILLAGERS) {
+                // Hide refresh villagers button when not on Villagers tab
+                refreshVillagersButton.visible = false;
+                refreshVillagersButton.active = false;
+                refreshVillagersButton.setX(-1000);
+                refreshVillagersButton.setY(-1000);
             }
             if (removeBuildingButton != null) {
                 removeBuildingButton.visible = false;
@@ -941,6 +1208,13 @@ public class SettlementScreen extends Screen {
     
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // Close building selection dialog on ESC
+        if (showingBuildingSelection && keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            closeBuildingSelectionDialog();
+            return true;
+        }
+        
+        // Handle other key presses
         // Handle ESC to close the screen
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             if (this.client != null) {
@@ -1006,9 +1280,6 @@ public class SettlementScreen extends Screen {
         int y = (this.height - screenHeight) / 2;
         
         // Position building list in main content area (at the bottom)
-        int infoY = y + 28;
-        int lineHeight = 14;
-        int tabContentY = infoY + lineHeight * 4 + 8;
         int listX = x - 70; // Left side with padding
         int listHeight = 100; // Fixed height for the widget
         int bottomOffset = -110; // Space from bottom edge (for buttons)
@@ -1487,6 +1758,145 @@ public class SettlementScreen extends Screen {
         
         com.secretasain.settlements.SettlementsMod.LOGGER.info("Updated settlement data in UI - buildings: {}, materials: {}", 
             updatedSettlement.getBuildings().size(), updatedSettlement.getMaterials().size());
+    }
+    
+    /**
+     * Shows a building selection dialog for assigning a villager to work.
+     */
+    private void showBuildingSelectionDialog(VillagerData villager) {
+        // Get available buildings (completed only)
+        List<com.secretasain.settlements.settlement.Building> availableBuildings = 
+            settlement.getBuildings().stream()
+                .filter(b -> b.getStatus() == com.secretasain.settlements.building.BuildingStatus.COMPLETED)
+                .collect(java.util.stream.Collectors.toList());
+        
+        if (availableBuildings.isEmpty()) {
+            if (this.client != null && this.client.player != null) {
+                this.client.player.sendMessage(
+                    net.minecraft.text.Text.translatable("settlements.work.no_buildings_available"),
+                    false
+                );
+            }
+            return;
+        }
+        
+        // Create building selection widget
+        int screenWidth = this.width;
+        int screenHeight = this.height;
+        int dialogWidth = 220;
+        int listHeight = Math.min(120, availableBuildings.size() * 26);
+        int dialogHeight = 50 + listHeight + 20; // title + list + footer
+        int dialogX = (screenWidth - dialogWidth) / 2;
+        int dialogY = (screenHeight - dialogHeight) / 2;
+        int listTop = dialogY + 30;
+        int listBottom = dialogY + dialogHeight - 20;
+        
+        buildingSelectionWidget = new BuildingSelectionWidget(
+            this.client,
+            dialogWidth - 20,
+            listHeight,
+            listTop,
+            listBottom,
+            26,
+            availableBuildings,
+            villager
+        );
+        buildingSelectionWidget.setLeftPos(dialogX + 10);
+        
+        buildingSelectionWidget.setOnBuildingSelected((v, buildingId) -> {
+            // Assign villager to selected building
+            com.secretasain.settlements.network.AssignWorkPacketClient.send(
+                settlement.getId(),
+                v.getEntityId(),
+                buildingId,
+                true
+            );
+            // Close dialog
+            showingBuildingSelection = false;
+            if (buildingSelectionWidget != null) {
+                this.remove(buildingSelectionWidget);
+                buildingSelectionWidget = null;
+            }
+            // Refresh villager list
+            this.client.execute(() -> {
+                villagerListWidget.updateEntries();
+            });
+        });
+        
+        this.addDrawableChild(buildingSelectionWidget);
+        showingBuildingSelection = true;
+    }
+    
+    /**
+     * Closes the building selection dialog.
+     */
+    private void closeBuildingSelectionDialog() {
+        showingBuildingSelection = false;
+        if (buildingSelectionWidget != null) {
+            this.remove(buildingSelectionWidget);
+            buildingSelectionWidget = null;
+        }
+    }
+    
+    /**
+     * Renders the building selection dialog background overlay.
+     */
+    private void renderBuildingSelectionDialogBackground(DrawContext context) {
+        int screenWidth = this.width;
+        int screenHeight = this.height;
+        int dialogWidth = 220;
+        int listHeight = buildingSelectionWidget != null && !buildingSelectionWidget.children().isEmpty() ? 
+            Math.min(120, buildingSelectionWidget.children().size() * 26) : 60;
+        int dialogHeight = 50 + listHeight + 20; // title + list + footer
+        int dialogX = (screenWidth - dialogWidth) / 2;
+        int dialogY = (screenHeight - dialogHeight) / 2;
+        
+        // Draw semi-transparent background overlay
+        context.fill(0, 0, screenWidth, screenHeight, 0x80000000);
+        
+        // Draw dialog background
+        context.fill(dialogX, dialogY, dialogX + dialogWidth, dialogY + dialogHeight, 0xFF202020);
+        context.drawBorder(dialogX, dialogY, dialogWidth, dialogHeight, 0xFF404040);
+    }
+    
+    /**
+     * Renders the building selection dialog text (title and footer).
+     */
+    private void renderBuildingSelectionDialogText(DrawContext context) {
+        int screenWidth = this.width;
+        int screenHeight = this.height;
+        int dialogWidth = 220;
+        int listHeight = buildingSelectionWidget != null && !buildingSelectionWidget.children().isEmpty() ? 
+            Math.min(120, buildingSelectionWidget.children().size() * 26) : 60;
+        int dialogHeight = 50 + listHeight + 20; // title + list + footer
+        int dialogX = (screenWidth - dialogWidth) / 2;
+        int dialogY = (screenHeight - dialogHeight) / 2;
+        
+        // Draw title
+        if (buildingSelectionWidget != null && buildingSelectionWidget.getVillager() != null) {
+            VillagerData villager = buildingSelectionWidget.getVillager();
+            String villagerName = villager.getName() != null && !villager.getName().isEmpty() 
+                ? villager.getName() 
+                : Text.translatable("settlements.ui.villagers.unnamed").getString();
+            context.drawText(
+                this.textRenderer,
+                Text.translatable("settlements.ui.work.select_building", villagerName),
+                dialogX + 10,
+                dialogY + 10,
+                0xFFFFFF,
+                false
+            );
+        }
+        
+        // Draw cancel hint
+        context.drawText(
+            this.textRenderer,
+            Text.translatable("settlements.ui.work.press_esc"),
+            dialogX + 10,
+            dialogY + dialogHeight - 16,
+            0xCCCCCC,
+            false
+        );
     }
     
     public void updateMaterials(UUID settlementId, net.minecraft.nbt.NbtCompound materialsNbt) {

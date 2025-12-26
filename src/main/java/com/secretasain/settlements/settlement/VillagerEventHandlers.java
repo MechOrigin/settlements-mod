@@ -2,7 +2,6 @@ package com.secretasain.settlements.settlement;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
-import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.server.world.ServerWorld;
 
@@ -59,6 +58,8 @@ public class VillagerEventHandlers {
                 villagerData.getEntityId().equals(villagerId)
             )) {
                 removed = true;
+                // Update settlement level (may have changed with villager removal)
+                SettlementLevelManager.updateSettlementLevel(settlement);
             }
         }
         

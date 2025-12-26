@@ -3,6 +3,7 @@ package com.secretasain.settlements.network;
 import com.secretasain.settlements.SettlementsMod;
 import com.secretasain.settlements.settlement.Building;
 import com.secretasain.settlements.settlement.Settlement;
+import com.secretasain.settlements.settlement.SettlementLevelManager;
 import com.secretasain.settlements.settlement.SettlementManager;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.block.Blocks;
@@ -57,6 +58,17 @@ public class CancelBuildingPacket {
                     
                     // Cancel the building
                     boolean materialsReturned = cancelBuilding(building, settlement, world);
+                    
+                    // Update settlement level (may have changed if completed building was removed)
+                    int oldLevel = settlement.getLevel();
+                    if (SettlementLevelManager.updateSettlementLevel(settlement)) {
+                        int newLevel = settlement.getLevel();
+                        if (newLevel < oldLevel) {
+                            SettlementsMod.LOGGER.info("Settlement {} leveled down from {} to {} after building removal", 
+                                settlement.getName(), oldLevel, newLevel);
+                            player.sendMessage(net.minecraft.text.Text.translatable("settlements.level.down", oldLevel, newLevel), false);
+                        }
+                    }
                     
                     // Mark settlement as dirty to save changes
                     manager.markDirty();

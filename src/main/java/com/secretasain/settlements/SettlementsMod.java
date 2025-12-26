@@ -40,5 +40,7 @@ public class SettlementsMod implements ModInitializer {
 		com.secretasain.settlements.network.StartBuildingPacket.register();
 		com.secretasain.settlements.network.CheckMaterialsPacket.register();
 		com.secretasain.settlements.network.UnloadInventoryPacket.register();
+		com.secretasain.settlements.network.HireFireVillagerPacket.register();
+		com.secretasain.settlements.network.AssignWorkPacket.register();
 	}
 }

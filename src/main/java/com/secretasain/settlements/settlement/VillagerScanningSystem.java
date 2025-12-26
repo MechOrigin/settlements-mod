@@ -127,6 +127,8 @@ public class VillagerScanningSystem {
                 } else {
                     // Add new villager
                     settlement.getVillagers().add(found);
+                    // Update settlement level (may have changed with new villager)
+                    SettlementLevelManager.updateSettlementLevel(settlement);
                 }
             }
             
@@ -142,10 +144,15 @@ public class VillagerScanningSystem {
             
             for (Settlement settlement : settlements) {
                 List<VillagerData> villagers = settlement.getVillagers();
+                int oldSize = villagers.size();
                 villagers.removeIf(villager -> {
                     long timeSinceSeen = currentTime - villager.getLastSeen();
                     return timeSinceSeen > VILLAGER_TIMEOUT_MS;
                 });
+                // Update settlement level if villagers were removed
+                if (villagers.size() < oldSize) {
+                    SettlementLevelManager.updateSettlementLevel(settlement);
+                }
             }
         }
     }

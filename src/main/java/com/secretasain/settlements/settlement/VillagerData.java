@@ -16,6 +16,7 @@ public class VillagerData {
     private boolean isEmployed;
     private String name;
     private long lastSeen;
+    private UUID assignedBuildingId; // Building this villager is assigned to work at (null if unassigned)
 
     public VillagerData(UUID entityId, BlockPos lastKnownPos, String profession, boolean isEmployed, String name) {
         this.entityId = entityId;
@@ -24,6 +25,7 @@ public class VillagerData {
         this.isEmployed = isEmployed;
         this.name = name;
         this.lastSeen = System.currentTimeMillis();
+        this.assignedBuildingId = null;
     }
 
     public UUID getEntityId() {
@@ -66,6 +68,18 @@ public class VillagerData {
     public long getLastSeen() {
         return lastSeen;
     }
+    
+    public UUID getAssignedBuildingId() {
+        return assignedBuildingId;
+    }
+    
+    public void setAssignedBuildingId(UUID buildingId) {
+        this.assignedBuildingId = buildingId;
+    }
+    
+    public boolean isAssigned() {
+        return assignedBuildingId != null;
+    }
 
     /**
      * Serializes this villager data to NBT.
@@ -81,6 +95,9 @@ public class VillagerData {
         nbt.putBoolean("isEmployed", isEmployed);
         nbt.putString("name", name != null ? name : "");
         nbt.putLong("lastSeen", lastSeen);
+        if (assignedBuildingId != null) {
+            nbt.putUuid("assignedBuildingId", assignedBuildingId);
+        }
         return nbt;
     }
 
@@ -96,9 +113,11 @@ public class VillagerData {
         boolean isEmployed = nbt.getBoolean("isEmployed");
         String name = nbt.getString("name");
         long lastSeen = nbt.contains("lastSeen") ? nbt.getLong("lastSeen") : System.currentTimeMillis();
+        UUID assignedBuildingId = nbt.contains("assignedBuildingId") ? nbt.getUuid("assignedBuildingId") : null;
         
         VillagerData data = new VillagerData(entityId, lastKnownPos, profession, isEmployed, name);
         data.lastSeen = lastSeen;
+        data.assignedBuildingId = assignedBuildingId;
         return data;
     }
 

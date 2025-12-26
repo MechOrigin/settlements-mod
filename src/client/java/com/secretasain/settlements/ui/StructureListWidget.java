@@ -1,5 +1,6 @@
 package com.secretasain.settlements.ui;
 
+import com.secretasain.settlements.building.StructureCategory;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
@@ -8,8 +9,8 @@ import net.minecraft.client.gui.widget.AlwaysSelectedEntryListWidget;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Widget for displaying a list of available structures.
@@ -75,13 +76,61 @@ public class StructureListWidget extends AlwaysSelectedEntryListWidget<Structure
     }
     
     /**
-     * Updates the list entries.
+     * Updates the list entries, grouped by category.
+     * Note: Category headers are displayed visually but not added as separate entries.
+     * Structures are sorted by category and rendered with category headers.
      */
     public void updateEntries() {
         this.clearEntries();
-        for (String name : structureNames) {
-            this.addEntry(new StructureEntry(name));
+        
+        // Group structures by category
+        Map<StructureCategory, List<String>> structuresByCategory = structureNames.stream()
+            .collect(Collectors.groupingBy(StructureCategory::fromStructureName));
+        
+        // Sort categories by display order
+        List<StructureCategory> sortedCategories = Arrays.asList(
+            StructureCategory.DEFENSIVE,
+            StructureCategory.RESIDENTIAL,
+            StructureCategory.COMMERCIAL,
+            StructureCategory.INDUSTRIAL,
+            StructureCategory.DECORATIVE,
+            StructureCategory.MISC
+        );
+        
+        // Add structures grouped by category (category headers rendered separately)
+        for (StructureCategory category : sortedCategories) {
+            List<String> structures = structuresByCategory.get(category);
+            if (structures != null && !structures.isEmpty()) {
+                // Add structures in this category
+                for (String name : structures) {
+                    this.addEntry(new StructureEntry(name, category));
+                }
+            }
         }
+    }
+    
+    /**
+     * Gets the category for a structure at a given index.
+     * Used for rendering category headers.
+     */
+    private StructureCategory getCategoryForIndex(int index) {
+        if (index < 0 || index >= this.children().size()) {
+            return StructureCategory.MISC;
+        }
+        StructureEntry entry = this.children().get(index);
+        return entry != null ? entry.getCategory() : StructureCategory.MISC;
+    }
+    
+    /**
+     * Checks if a category header should be shown before the entry at the given index.
+     */
+    private boolean shouldShowCategoryHeader(int index) {
+        if (index <= 0) {
+            return true; // Always show header for first entry
+        }
+        StructureCategory currentCategory = getCategoryForIndex(index);
+        StructureCategory previousCategory = getCategoryForIndex(index - 1);
+        return !currentCategory.equals(previousCategory);
     }
     
     @Override
@@ -138,6 +187,16 @@ public class StructureListWidget extends AlwaysSelectedEntryListWidget<Structure
             int entryY = y + (i * this.itemHeight) - scrollAmount;
             
             if (entryY + this.itemHeight >= y && entryY <= y + height) {
+                // Render category header if needed
+                if (shouldShowCategoryHeader(i)) {
+                    StructureCategory category = entry.getCategory();
+                    CategoryHeaderEntry header = new CategoryHeaderEntry(category);
+                    int headerY = entryY - this.itemHeight;
+                    if (headerY >= y - this.itemHeight) {
+                        header.render(context, i, headerY, x, width, this.itemHeight, mouseX, mouseY, false, delta);
+                    }
+                }
+                
                 boolean isSelected = this.getSelectedOrNull() == entry;
                 boolean isHovered = mouseX >= x && mouseX <= x + width && 
                                    mouseY >= entryY && mouseY <= entryY + this.itemHeight;
@@ -255,13 +314,75 @@ public class StructureListWidget extends AlwaysSelectedEntryListWidget<Structure
     }
     
     /**
+     * Gets the selected structure entry (for category access).
+     * @return Selected StructureEntry, or null if none selected
+     */
+    public StructureEntry getSelectedStructureEntry() {
+        return this.getSelectedOrNull();
+    }
+    
+    /**
+     * A category header entry in the structure list.
+     */
+    public static class CategoryHeaderEntry extends AlwaysSelectedEntryListWidget.Entry<CategoryHeaderEntry> {
+        private final StructureCategory category;
+        
+        public CategoryHeaderEntry(StructureCategory category) {
+            this.category = category;
+        }
+        
+        @Override
+        public void render(DrawContext context, int index, int y, int x, int entryWidth, int entryHeight, 
+                          int mouseX, int mouseY, boolean hovered, float tickDelta) {
+            // Draw category header with background
+            context.fill(x, y, x + entryWidth, y + entryHeight, 0xFF404040);
+            context.drawBorder(x, y, entryWidth, entryHeight, 0xFF606060);
+            
+            // Draw category name
+            Text categoryText = category.getDisplayName();
+            context.drawText(
+                MinecraftClient.getInstance().textRenderer,
+                categoryText,
+                x + 5,
+                y + (entryHeight - 8) / 2,
+                0xFFFFFF,
+                false
+            );
+        }
+        
+        @Override
+        public Text getNarration() {
+            return Text.translatable("settlements.ui.buildings.category", category.getDisplayName());
+        }
+        
+        public StructureCategory getCategory() {
+            return category;
+        }
+    }
+    
+    /**
      * A single entry in the structure list.
      */
     public static class StructureEntry extends AlwaysSelectedEntryListWidget.Entry<StructureEntry> {
         private final String name;
+        private final StructureCategory category;
         
         public StructureEntry(String name) {
             this.name = name;
+            this.category = StructureCategory.fromStructureName(name);
+        }
+        
+        public StructureEntry(String name, StructureCategory category) {
+            this.name = name;
+            this.category = category;
+        }
+        
+        public String getName() {
+            return name;
+        }
+        
+        public StructureCategory getCategory() {
+            return category;
         }
         
         @Override
@@ -324,6 +445,21 @@ public class StructureListWidget extends AlwaysSelectedEntryListWidget<Structure
         private Block getBlockForStructure(String structureName) {
             String lowerName = structureName.toLowerCase();
             
+            // Check for structure types first
+            if (lowerName.contains("cartographer")) {
+                return Blocks.CARTOGRAPHY_TABLE;
+            } else if (lowerName.contains("farm")) {
+                return Blocks.FARMLAND;
+            } else if (lowerName.contains("smith") || lowerName.contains("forge") || lowerName.contains("smithing")) {
+                return Blocks.SMITHING_TABLE;
+            } else if (lowerName.contains("fence")) {
+                return Blocks.OAK_FENCE;
+            } else if (lowerName.contains("gate")) {
+                return Blocks.OAK_FENCE_GATE;
+            } else if (lowerName.contains("house") || lowerName.contains("home")) {
+                return Blocks.OAK_PLANKS; // Houses use oak planks icon
+            }
+            
             // Check for material types
             if (lowerName.contains("oak")) {
                 if (lowerName.contains("plank") || lowerName.contains("wall")) {
@@ -370,10 +506,6 @@ public class StructureListWidget extends AlwaysSelectedEntryListWidget<Structure
         @Override
         public Text getNarration() {
             return Text.literal("Structure: " + name);
-        }
-        
-        public String getName() {
-            return name;
         }
     }
 }

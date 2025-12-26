@@ -18,6 +18,7 @@ public class Settlement {
     private List<VillagerData> villagers;
     private List<Building> buildings;
     private Map<String, Integer> materials; // Using String for ResourceLocation key for now
+    private int level; // Settlement level (1-5)
 
     /**
      * Creates a new settlement with the given parameters.
@@ -34,6 +35,7 @@ public class Settlement {
         this.villagers = new ArrayList<>();
         this.buildings = new ArrayList<>();
         this.materials = new HashMap<>();
+        this.level = 1; // Start at level 1
     }
 
     /**
@@ -77,6 +79,9 @@ public class Settlement {
             }
         }
         
+        // Load level (default to 1 if not present for backwards compatibility)
+        settlement.level = nbt.contains("level", 3) ? nbt.getInt("level") : 1;
+        
         return settlement;
     }
 
@@ -111,6 +116,9 @@ public class Settlement {
             materialsNbt.putInt(entry.getKey(), entry.getValue());
         }
         nbt.put("materials", materialsNbt);
+        
+        // Save level
+        nbt.putInt("level", level);
         
         return nbt;
     }
@@ -158,6 +166,62 @@ public class Settlement {
 
     public Map<String, Integer> getMaterials() {
         return materials;
+    }
+    
+    public int getLevel() {
+        return level;
+    }
+    
+    public void setLevel(int level) {
+        this.level = Math.max(1, Math.min(5, level)); // Clamp to 1-5
+    }
+    
+    /**
+     * Updates the settlement level based on current stats.
+     * Returns true if the level changed.
+     */
+    public boolean updateLevel() {
+        SettlementLevel calculatedLevel = SettlementLevel.calculateLevel(this);
+        int oldLevel = this.level;
+        this.level = calculatedLevel.getLevel();
+        return oldLevel != this.level;
+    }
+    
+    /**
+     * Gets the SettlementLevel enum for this settlement's level.
+     */
+    public SettlementLevel getSettlementLevel() {
+        return SettlementLevel.fromLevel(this.level);
+    }
+    
+    /**
+     * Gets the next level this settlement can reach.
+     * Returns null if already at max level.
+     */
+    public SettlementLevel getNextLevel() {
+        return getSettlementLevel().getNextLevel();
+    }
+    
+    /**
+     * Checks if the settlement can level up.
+     */
+    public boolean canLevelUp() {
+        SettlementLevel nextLevel = getNextLevel();
+        if (nextLevel == null) {
+            return false; // Already at max level
+        }
+        
+        int villagerCount = villagers.size();
+        int buildingCount = (int) buildings.stream()
+            .filter(b -> b.getStatus() == com.secretasain.settlements.building.BuildingStatus.COMPLETED)
+            .count();
+        int employedCount = (int) villagers.stream()
+            .filter(VillagerData::isEmployed)
+            .count();
+        
+        return villagerCount >= nextLevel.getRequiredVillagers() &&
+               buildingCount >= nextLevel.getRequiredBuildings() &&
+               employedCount >= nextLevel.getRequiredEmployedVillagers();
     }
 
     /**

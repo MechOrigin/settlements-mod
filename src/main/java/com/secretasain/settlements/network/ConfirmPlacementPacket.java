@@ -3,6 +3,7 @@ package com.secretasain.settlements.network;
 import com.secretasain.settlements.SettlementsMod;
 import com.secretasain.settlements.building.BuildModeHandler;
 import com.secretasain.settlements.building.BuildModeManager;
+import com.secretasain.settlements.building.BuildingStatus;
 import com.secretasain.settlements.settlement.Building;
 import com.secretasain.settlements.settlement.Settlement;
 import com.secretasain.settlements.settlement.SettlementManager;
@@ -76,6 +77,15 @@ public class ConfirmPlacementPacket {
                             return;
                         }
                         
+                        // Enhanced validation: Check all structure blocks are within settlement bounds
+                        com.secretasain.settlements.building.StructureData structureData = handler.getSelectedStructure();
+                        String validationError = validatePlacement(structureData, placementPos, rotation, settlement, world);
+                        if (validationError != null) {
+                            SettlementsMod.LOGGER.warn("Cannot place building: {}", validationError);
+                            player.sendMessage(net.minecraft.text.Text.literal("Cannot place building: " + validationError), false);
+                            return;
+                        }
+                        
                         // Create building
                         UUID buildingId = UUID.randomUUID();
                         // Structure identifier should be the full path: "settlements:structures/name.nbt"
@@ -94,7 +104,6 @@ public class ConfirmPlacementPacket {
                         SettlementsMod.LOGGER.info("Creating building with structure identifier: {}", structureType);
                         
                         // Calculate and set required materials from structure
-                        com.secretasain.settlements.building.StructureData structureData = handler.getSelectedStructure();
                         java.util.Map<net.minecraft.util.Identifier, Integer> requiredMaterials = 
                             com.secretasain.settlements.building.MaterialManager.calculateMaterials(structureData);
                         building.setRequiredMaterials(requiredMaterials);
@@ -306,6 +315,148 @@ public class ConfirmPlacementPacket {
         
         building.setGhostBlockPositions(ghostPositions);
         SettlementsMod.LOGGER.info("Placed {} ghost blocks for building {}", ghostPositions.size(), building.getId());
+    }
+    
+    /**
+     * Validates that a structure can be placed at the given position.
+     * @param structure The structure data
+     * @param placementPos The placement position
+     * @param rotation The rotation in degrees
+     * @param settlement The settlement
+     * @param world The world
+     * @return Error message if validation fails, null if valid
+     */
+    private static String validatePlacement(com.secretasain.settlements.building.StructureData structure, 
+                                           BlockPos placementPos, int rotation, 
+                                           Settlement settlement, ServerWorld world) {
+        // Check all structure blocks are within settlement bounds
+        for (com.secretasain.settlements.building.StructureBlock block : structure.getBlocks()) {
+            BlockPos relativePos = block.getRelativePos();
+            BlockPos worldPos = applyRotation(relativePos, rotation).add(placementPos);
+            
+            // Check if block is within settlement bounds
+            if (!settlement.isWithinBounds(worldPos)) {
+                return "Structure extends outside settlement bounds";
+            }
+            
+            // Check if chunk is loaded
+            if (!world.getChunkManager().isChunkLoaded(worldPos.getX() >> 4, worldPos.getZ() >> 4)) {
+                return "Structure extends into unloaded chunks";
+            }
+            
+            // Check if block space is available (air or replaceable)
+            BlockState existing = world.getBlockState(worldPos);
+            if (!existing.isAir() && !existing.isReplaceable()) {
+                // Allow barrier blocks and ghost blocks (they'll be replaced)
+                if (existing.getBlock() != Blocks.BARRIER && 
+                    existing.getBlock() != com.secretasain.settlements.block.ModBlocks.GHOST_BLOCK) {
+                    return "Structure overlaps with existing blocks";
+                }
+            }
+        }
+        
+        // Check for overlap with existing buildings
+        for (Building existingBuilding : settlement.getBuildings()) {
+            // Skip cancelled buildings
+            if (existingBuilding.getStatus() == BuildingStatus.CANCELLED) {
+                continue;
+            }
+            
+            // Calculate bounding boxes for both buildings
+            net.minecraft.util.math.Box newBounds = calculateStructureBounds(structure, placementPos, rotation);
+            net.minecraft.util.math.Box existingBounds = calculateBuildingBounds(existingBuilding, world);
+            
+            // Check if bounding boxes overlap
+            if (newBounds.intersects(existingBounds)) {
+                // More detailed check: check if any blocks overlap
+                if (buildingsOverlap(structure, placementPos, rotation, existingBuilding, world)) {
+                    return "Structure overlaps with existing building";
+                }
+            }
+        }
+        
+        return null; // Validation passed
+    }
+    
+    /**
+     * Calculates the bounding box for a structure at a given position and rotation.
+     */
+    private static net.minecraft.util.math.Box calculateStructureBounds(
+            com.secretasain.settlements.building.StructureData structure, 
+            BlockPos placementPos, int rotation) {
+        BlockPos min = new BlockPos(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE);
+        BlockPos max = new BlockPos(Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE);
+        
+        for (com.secretasain.settlements.building.StructureBlock block : structure.getBlocks()) {
+            BlockPos relativePos = block.getRelativePos();
+            BlockPos worldPos = applyRotation(relativePos, rotation).add(placementPos);
+            
+            min = new BlockPos(
+                Math.min(min.getX(), worldPos.getX()),
+                Math.min(min.getY(), worldPos.getY()),
+                Math.min(min.getZ(), worldPos.getZ())
+            );
+            max = new BlockPos(
+                Math.max(max.getX(), worldPos.getX()),
+                Math.max(max.getY(), worldPos.getY()),
+                Math.max(max.getZ(), worldPos.getZ())
+            );
+        }
+        
+        return new net.minecraft.util.math.Box(min, max.add(1, 1, 1));
+    }
+    
+    /**
+     * Calculates the bounding box for an existing building.
+     */
+    private static net.minecraft.util.math.Box calculateBuildingBounds(Building building, ServerWorld world) {
+        // Try to get structure data for the building
+        com.secretasain.settlements.building.StructureData structureData = 
+            com.secretasain.settlements.building.StructureLoader.loadStructure(building.getStructureType(), world.getServer());
+        
+        if (structureData != null) {
+            return calculateStructureBounds(structureData, building.getPosition(), building.getRotation());
+        } else {
+            // Fallback: use a small bounding box around the building position
+            BlockPos pos = building.getPosition();
+            return new net.minecraft.util.math.Box(pos, pos.add(1, 1, 1));
+        }
+    }
+    
+    /**
+     * Checks if two buildings overlap by comparing their block positions.
+     */
+    private static boolean buildingsOverlap(
+            com.secretasain.settlements.building.StructureData newStructure, 
+            BlockPos newPos, int newRotation,
+            Building existingBuilding, ServerWorld world) {
+        // Get structure data for existing building
+        com.secretasain.settlements.building.StructureData existingStructure = 
+            com.secretasain.settlements.building.StructureLoader.loadStructure(existingBuilding.getStructureType(), world.getServer());
+        
+        if (existingStructure == null) {
+            // Can't check overlap without structure data, assume no overlap
+            return false;
+        }
+        
+        // Create sets of world positions for both buildings
+        java.util.Set<BlockPos> newPositions = new java.util.HashSet<>();
+        for (com.secretasain.settlements.building.StructureBlock block : newStructure.getBlocks()) {
+            BlockPos relativePos = block.getRelativePos();
+            BlockPos worldPos = applyRotation(relativePos, newRotation).add(newPos);
+            newPositions.add(worldPos);
+        }
+        
+        java.util.Set<BlockPos> existingPositions = new java.util.HashSet<>();
+        for (com.secretasain.settlements.building.StructureBlock block : existingStructure.getBlocks()) {
+            BlockPos relativePos = block.getRelativePos();
+            BlockPos worldPos = applyRotation(relativePos, existingBuilding.getRotation()).add(existingBuilding.getPosition());
+            existingPositions.add(worldPos);
+        }
+        
+        // Check for any overlapping positions
+        newPositions.retainAll(existingPositions);
+        return !newPositions.isEmpty();
     }
     
     /**

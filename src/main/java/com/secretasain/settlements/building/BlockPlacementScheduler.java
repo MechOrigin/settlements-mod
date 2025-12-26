@@ -3,6 +3,7 @@ package com.secretasain.settlements.building;
 import com.secretasain.settlements.SettlementsMod;
 import com.secretasain.settlements.settlement.Building;
 import com.secretasain.settlements.settlement.Settlement;
+import com.secretasain.settlements.settlement.SettlementLevelManager;
 import com.secretasain.settlements.settlement.SettlementManager;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.block.Block;
@@ -344,6 +345,14 @@ public class BlockPlacementScheduler {
             
             // Clear providedMaterials after creating book (materials were already consumed from settlement storage)
             building.clearProvidedMaterials();
+            
+            // Update settlement level (may have changed with new completed building)
+            int oldLevel = settlement.getLevel();
+            if (SettlementLevelManager.updateSettlementLevel(settlement)) {
+                int newLevel = settlement.getLevel();
+                SettlementsMod.LOGGER.info("Settlement {} leveled up from {} to {} after building completion", 
+                    settlement.getName(), oldLevel, newLevel);
+            }
             
             manager.markDirty();
             SettlementsMod.LOGGER.info("Building {} construction completed", building.getId());
