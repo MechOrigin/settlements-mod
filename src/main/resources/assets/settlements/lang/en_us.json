@@ -1,0 +1,42 @@
+{
+  "settlements.ui.title": "Settlement Management",
+  "settlements.ui.tab.overview": "Overview",
+  "settlements.ui.tab.buildings": "Buildings",
+  "settlements.ui.tab.villagers": "Villagers",
+  "settlements.ui.tab.settings": "Settings",
+  
+  "settlements.ui.info.settlement": "Settlement: %s",
+  "settlements.ui.info.villagers": "Villagers: %d",
+  "settlements.ui.info.buildings": "Buildings: %d",
+  "settlements.ui.info.radius": "Radius: %d blocks",
+  
+  "settlements.ui.overview.title": "Overview",
+  "settlements.ui.overview.welcome": "Welcome to %s!",
+  "settlements.ui.overview.description": "Manage your settlement from this interface.",
+  
+  "settlements.ui.buildings.title": "Buildings",
+  "settlements.ui.buildings.none": "No buildings yet.",
+  "settlements.ui.buildings.empty": "No buildings have been constructed.",
+  "settlements.ui.buildings.no_structures": "No structures available.",
+  "settlements.ui.buildings.build_button": "Build Structure",
+  "settlements.ui.buildings.select_structure": "Select a structure to build",
+  "settlements.ui.buildings.structures": "Structures",
+  "settlements.ui.buildings.cancel": "Cancel",
+  "settlements.ui.buildings.remove": "Remove",
+  "settlements.ui.buildings.start": "Start Building",
+  "settlements.ui.buildings.check_materials": "Check Materials",
+  "settlements.ui.buildings.unload_inventory": "Unload Inventory",
+  
+  "settlements.ui.villagers.title": "Villagers",
+  "settlements.ui.villagers.none": "No villagers found.",
+  "settlements.ui.villagers.tracking": "Villagers within %d blocks",
+  "settlements.ui.villagers.tracking_desc": "will be tracked automatically.",
+  "settlements.ui.villagers.unnamed": "Unnamed Villager",
+  "settlements.ui.villagers.profession.none": "None",
+  "settlements.ui.villagers.status.employed": "Employed",
+  "settlements.ui.villagers.status.unemployed": "Unemployed",
+  
+  "settlements.ui.settings.title": "Settings",
+  "settlements.ui.settings.coming_soon": "Settings coming soon."
+}
+

@@ -1,0 +1,674 @@
+# Cursor Rules for Plan Files
+
+## Markdown Plan File Guidelines
+
+When working with markdown plan files (especially development plans):
+
+### Task Tracking
+- **Always use checkboxes** `[ ]` for incomplete tasks and `[x]` for completed tasks
+- **Update checkboxes immediately** when a task is completed
+- **Break down large tasks** into smaller, actionable sub-tasks with individual checkboxes
+- **Mark sections as complete** by checking all sub-tasks within that section
+
+### Plan Structure
+- **Break each goal into specific tasks** - no vague or high-level tasks
+- **Structure plans hierarchically**: Phase → Goal → Task → Sub-task
+- **Each code section or implementation** should have its own detailed breakdown
+- **Include technical notes** for each major component explaining the approach
+- **Add implementation details** that make it clear what needs to be built
+
+### Code Implementation Planning
+- **Break down each class/component** into specific implementation steps
+- **List required methods and fields** as sub-tasks
+- **Include integration points** as separate tasks (mixins, event handlers, etc.)
+- **Specify data structures** and their relationships
+- **Detail the flow** of operations (step-by-step process)
+
+### Best Practices
+- **One task = one actionable item** that can be completed independently
+- **Tasks should be testable** - you should be able to verify completion
+- **Include dependencies** - note which tasks must be completed before others
+- **Add validation criteria** - how to know a task is done correctly
+- **Update progress regularly** - check off tasks as they're completed
+
+### Example Structure
+```markdown
+### Goal Name
+**Goal**: Brief description of what this accomplishes
+
+**Tasks**:
+- [ ] Sub-task 1: Specific action to take
+- [ ] Sub-task 2: Another specific action
+  - [ ] Sub-sub-task 2a: Even more specific detail
+  - [ ] Sub-sub-task 2b: Another detail
+
+**Technical Notes**:
+- Implementation approach
+- Key considerations
+- Dependencies
+```
+
+### When Completing Tasks
+1. Mark the task as complete: `[x]`
+2. If a task reveals new sub-tasks, add them immediately
+3. Update related sections if dependencies change
+4. Document any deviations from the plan
+
+---
+
+# Cursor Rules for Build Configuration
+
+## Gradle Properties and Build Rules
+
+### Critical Version Compatibility Rules
+- **NEVER change `loom_version` without verifying compatibility with `minecraft_version`**
+- **For Minecraft 1.20.1**: `loom_version` MUST be `1.2.7` (or compatible 1.2.x version)
+  - Version 1.4.8 and higher are NOT compatible with Minecraft 1.20.1
+  - Always check https://fabricmc.net/develop for correct version mappings
+- **Java Version**: This project uses Java 17 (sourceCompatibility and targetCompatibility)
+  - Do NOT change Java version without updating all related configurations
+
+### Required Gradle Properties (gradle.properties)
+These properties are critical and should NOT be changed without verification:
+
+```
+# Fabric Properties - DO NOT CHANGE WITHOUT VERIFICATION
+minecraft_version=1.20.1
+yarn_mappings=1.20.1+build.10
+loader_version=0.18.4
+loom_version=1.2.7  # CRITICAL: Must match Minecraft version compatibility
+
+# Mod Properties
+mod_version=1.0.0
+maven_group=secretasain.settlements
+archives_base_name=settlements
+
+# Fabric API
+fabric_version=0.92.6+1.20.1
+```
+
+### Build Configuration Rules
+- **Before updating any version in `gradle.properties`**:
+  1. Check https://fabricmc.net/develop for compatible versions
+  2. Verify loom_version compatibility with minecraft_version
+  3. Test build after changes: `./gradlew clean build`
+- **Mod ID**: The mod ID is `settlements` (defined in `loom.mods` block)
+- **Source Sets**: Project uses split environment source sets (main and client)
+- **Repository Configuration**: Fabric repository is configured in `settings.gradle`
+  - Do NOT remove the Fabric Maven repository from pluginManagement
+
+### When Modifying Build Files
+- **build.gradle**: 
+  - Keep `loom.splitEnvironmentSourceSets()` configuration
+  - Maintain mod ID as "settlements" in loom.mods block
+  - Do NOT change Java version settings (currently 17)
+- **settings.gradle**:
+  - Keep Fabric Maven repository in pluginManagement
+  - Maintain mavenCentral() and gradlePluginPortal() repositories
+- **gradle.properties**:
+  - Always verify version compatibility before changing
+  - Keep memory settings (6G) for build performance
+  - Keep configuration-cache disabled (IntelliJ compatibility)
+
+### Error Prevention
+- If build fails with "Plugin was not found" error:
+  1. Check if loom_version matches Minecraft version compatibility
+  2. Verify Fabric Maven repository is accessible
+  3. Check for typos in version strings
+- If you see version mismatch errors:
+  1. Cross-reference all versions on https://fabricmc.net/develop
+  2. Ensure yarn_mappings matches minecraft_version
+  3. Ensure fabric_version matches minecraft_version
+
+### Testing Build Changes
+- Always run `./gradlew clean build` after modifying:
+  - gradle.properties (any version changes)
+  - build.gradle (dependency or configuration changes)
+  - settings.gradle (repository changes)
+
+---
+
+# Cursor Rules for Troubleshooting Runtime Issues
+
+## Fabric API Missing Dependency (NoClassDefFoundError)
+
+### Problem Description
+When running the game through an IDE debugger (IntelliJ, Eclipse, etc.) instead of through Gradle, you may encounter:
+```
+java.lang.NoClassDefFoundError: net/fabricmc/fabric/api/block/v1/FabricBlock
+```
+or similar errors referencing Fabric API classes.
+
+### Root Cause
+- Fabric API is declared in `build.gradle` as `modImplementation`
+- When running through IDE debuggers, Fabric Loom doesn't automatically copy mod dependencies to `run/mods`
+- Gradle's `runClient` task loads mods from the classpath, but direct Java execution needs mods in `run/mods`
+
+### Diagnosis Steps
+1. **Check if Fabric API is declared in build.gradle:**
+   ```groovy
+   modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+   ```
+
+2. **Verify dependencies are resolved:**
+   ```bash
+   ./gradlew dependencies --configuration modRuntimeClasspathMainMapped | findstr fabric-api
+   ```
+   Should show Fabric API modules in the dependency tree.
+
+3. **Check if run/mods folder is empty:**
+   - If `run/mods` is empty, mods aren't being copied for IDE execution
+   - This is normal - Gradle loads mods from classpath, not from `run/mods`
+
+4. **Verify the error occurs during Minecraft initialization:**
+   - Error happens in `net.minecraft.registry.Registries.<clinit>` or `net.minecraft.Bootstrap.initialize`
+   - This indicates Fabric API isn't loaded before Minecraft starts
+
+### Solutions
+
+#### Solution 1: Use Gradle's runClient Task (Recommended)
+**Best for**: Development and testing
+```bash
+./gradlew runClient
+```
+- Automatically sets up all dependencies
+- Loads mods from classpath correctly
+- Works immediately without additional configuration
+- **Note**: Debugging through Gradle may require additional IDE configuration
+
+#### Solution 2: Configure IDE to Use Gradle Task
+**Best for**: IDE debugging with proper mod setup
+1. In IntelliJ IDEA:
+   - Create a new Gradle run configuration
+   - Set task to `runClient`
+   - This ensures mods are loaded correctly through Gradle
+
+2. In Eclipse:
+   ```bash
+   ./gradlew genEclipseRuns
+   ```
+   - Generates Eclipse run configurations that use Gradle tasks
+   - Use the generated run configuration instead of manual Java execution
+
+#### Solution 3: Manually Add Fabric API to run/mods
+**Best for**: When you must use IDE's direct Java execution
+1. Download Fabric API JAR matching your version:
+   - Check `gradle.properties` for `fabric_version` (e.g., `0.92.6+1.20.1`)
+   - Download from [CurseForge](https://www.curseforge.com/minecraft/mc-mods/fabric-api/files) or [Modrinth](https://modrinth.com/mod/fabric-api)
+   - Ensure version matches exactly (including build number)
+
+2. Place JAR in `run/mods` folder:
+   - Copy the downloaded `fabric-api-<version>.jar` to `run/mods/`
+   - The folder should be at project root: `run/mods/`
+
+3. Verify:
+   - `run/mods` should contain the Fabric API JAR
+   - Run the game again through IDE
+
+#### Solution 4: Run Gradle Task Once to Set Up Environment
+**Best for**: One-time setup before using IDE
+```bash
+# Run client briefly to set up mods (will start game, can be stopped)
+./gradlew runClient
+```
+- This downloads and remaps all dependencies
+- May populate `run/mods` in some Fabric Loom versions
+- After this, IDE execution might work if mods are copied
+
+### Prevention
+- **Always use Gradle's runClient for development** when possible
+- **Configure IDE run configurations** to use Gradle tasks instead of direct Java execution
+- **Document IDE setup** in project README if team members use different IDEs
+- **Check run/mods folder** if switching between Gradle and IDE execution
+
+### Verification
+After applying a solution, verify Fabric API is loading:
+- Game should start without `NoClassDefFoundError`
+- Logs should show Fabric API modules loading (e.g., "Loading 59 mods: fabric-api 0.92.6+1.20.1...")
+- No errors about missing Fabric API classes
+
+### Related Issues
+- If error persists after adding Fabric API to `run/mods`, check:
+  - Version matches exactly (including build metadata)
+  - JAR is not corrupted
+  - `fabric.mod.json` declares dependency: `"fabric-api": "*"` in `depends` section
+- If using split source sets, ensure both main and client have access to Fabric API
+
+### Specific Error: "Incompatible mods found" with Missing Base Modules
+**Error Pattern:**
+```
+Incompatible mods found!
+- Mod 'X' requires any version of fabric-api-base, which is missing!
+- Mod 'Y' requires any version of fabric-rendering-v1, which is missing!
+- Mod 'Settlements Mod' requires any version of fabric-api, which is missing!
+```
+
+**Cause:** When running through IDE, some Fabric API modules may be detected from classpath, but the complete Fabric API bundle (including base modules) is not loaded.
+
+**Solution:**
+
+**Option A: Copy from Gradle Cache (Fastest)**
+If you've run `./gradlew build` or `./gradlew runClient` before, Fabric API is already in your Gradle cache:
+```powershell
+# PowerShell command to find and copy Fabric API from cache
+$gradleCache = "$env:USERPROFILE\.gradle\caches\modules-2\files-2.1"
+$fabricApiPath = Get-ChildItem -Path $gradleCache -Recurse -Filter "*fabric-api*0.92.6*1.20.1*.jar" -ErrorAction SilentlyContinue | 
+    Where-Object { $_.Name -like "*fabric-api*" -and $_.Name -notlike "*common*" -and $_.Name -notlike "*client*" } | 
+    Select-Object -First 1
+if ($fabricApiPath) {
+    New-Item -ItemType Directory -Path "run\mods" -Force | Out-Null
+    Copy-Item -Path $fabricApiPath.FullName -Destination "run\mods\fabric-api-0.92.6+1.20.1.jar" -Force
+    Write-Host "Fabric API copied to run\mods\"
+}
+```
+
+**Option B: Download Manually**
+1. **Download Fabric API JAR** matching your version:
+   - Check `gradle.properties` for `fabric_version` (e.g., `0.92.6+1.20.1`)
+   - Download from:
+     - CurseForge: https://www.curseforge.com/minecraft/mc-mods/fabric-api/files
+     - Modrinth: https://modrinth.com/mod/fabric-api
+   - **Important**: Download the full `fabric-api` JAR, not individual modules
+
+2. **Place in run/mods folder:**
+   ```bash
+   # Ensure folder exists
+   mkdir -p run/mods
+   # Copy downloaded fabric-api-<version>.jar to run/mods/
+   ```
+
+3. **Verify the JAR contains all modules:**
+   - The Fabric API JAR is a bundle containing all modules
+   - File should be named like `fabric-api-0.92.6+1.20.1.jar`
+   - Size should be ~2 MB (not just a few KB)
+
+**Option C: Use Gradle runClient**
+- If downloading manually is inconvenient, use `./gradlew runClient`
+- This automatically handles all dependencies correctly
+
+---
+
+# Cursor Rules for Common Compilation Errors (Minecraft 1.20.1 / Java 17)
+
+## Java 17 Pattern Matching Limitations
+
+### Problem
+Java 17 does NOT support unconditional pattern matching with multiple conditions in a single `instanceof` statement.
+
+**❌ WRONG (Will not compile):**
+```java
+if (entity instanceof VillagerEntity villager && world instanceof ServerWorld serverWorld) {
+    // This will fail with: "unconditional patterns in instanceof are not supported in -source 17"
+}
+```
+
+**✅ CORRECT:**
+```java
+if (entity instanceof VillagerEntity) {
+    VillagerEntity villager = (VillagerEntity) entity;
+    if (world instanceof ServerWorld) {
+        ServerWorld serverWorld = (ServerWorld) world;
+        // Use villager and serverWorld here
+    }
+}
+```
+
+**Alternative (if you only need one check):**
+```java
+if (entity instanceof VillagerEntity villager) {
+    if (entity.getWorld() instanceof ServerWorld serverWorld) {
+        // Use villager and serverWorld here
+    }
+}
+```
+
+### Prevention
+- **Always split multiple instanceof checks** into separate statements when using pattern variables
+- **Test compilation** after writing instanceof checks: `./gradlew compileJava`
+- **Remember**: Java 17 pattern matching is more limited than Java 21+
+
+---
+
+## Constructor Reference Issues
+
+### Problem
+Using constructor method references with `computeIfAbsent` or similar methods may fail with "incompatible types: invalid constructor reference".
+
+**❌ WRONG:**
+```java
+WorldScanData data = worldData.computeIfAbsent(world, WorldScanData::new);
+```
+
+**✅ CORRECT:**
+```java
+WorldScanData data = worldData.computeIfAbsent(world, w -> new WorldScanData());
+```
+
+### Prevention
+- **Use lambda expressions** instead of method references when the compiler can't infer types
+- **Test compilation** after using method references: `./gradlew compileJava`
+
+---
+
+## VillagerProfession Identifier Access
+
+### Problem
+`VillagerProfession` does NOT have a `.getId()` method in Minecraft 1.20.1.
+
+**❌ WRONG:**
+```java
+VillagerProfession profession = villager.getVillagerData().getProfession();
+String professionName = profession != null ? profession.getId().toString() : "none";
+// Error: cannot find symbol: method getId()
+```
+
+**✅ CORRECT:**
+```java
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
+
+VillagerProfession profession = villager.getVillagerData().getProfession();
+String professionName = "none";
+if (profession != null) {
+    Identifier professionId = Registries.VILLAGER_PROFESSION.getId(profession);
+    professionName = professionId != null ? professionId.toString() : "none";
+}
+```
+
+### Prevention
+- **Always use `Registries.VILLAGER_PROFESSION.getId(profession)`** to get profession identifiers
+- **Check for null** before using the identifier
+- **Import required classes**: `net.minecraft.registry.Registries` and `net.minecraft.util.Identifier`
+
+---
+
+## ResourceManager.findResources() Return Type
+
+### Problem
+`ResourceManager.findResources()` returns `Map<Identifier, Resource>`, NOT `Set<Identifier>`.
+
+**❌ WRONG:**
+```java
+Set<Identifier> resources = resourceManager.findResources(
+    "data/settlements/structures",
+    path -> path.getPath().endsWith(".nbt")
+);
+// Error: incompatible types: Map<Identifier,Resource> cannot be converted to Set<Identifier>
+```
+
+**✅ CORRECT:**
+```java
+import net.minecraft.resource.Resource;
+import java.util.Map;
+
+Map<Identifier, Resource> resources = resourceManager.findResources(
+    "data/settlements/structures",
+    path -> path.getPath().endsWith(".nbt")
+);
+
+// Iterate over keys (identifiers)
+for (Identifier id : resources.keySet()) {
+    String path = id.getPath();
+    // Use path...
+}
+```
+
+### Prevention
+- **Always check return types** in IDE or Minecraft source code
+- **Use `.keySet()`** to get identifiers from the map
+- **Import `net.minecraft.resource.Resource`** if you need the resource objects
+
+---
+
+## Widget Visibility Field
+
+### Problem
+Minecraft widgets (ButtonWidget, ListWidget, etc.) do NOT have a public `.visible` field in 1.20.1.
+
+**❌ WRONG:**
+```java
+this.villagerListWidget.visible = false;
+// Error: visible cannot be resolved or is not a field
+```
+
+**✅ CORRECT:**
+```java
+// Option 1: Remove widget from screen (if you need to hide it)
+this.remove(villagerListWidget);
+
+// Option 2: Track visibility yourself and conditionally render
+private boolean isVillagerListVisible = false;
+
+// In render method:
+if (isVillagerListVisible) {
+    villagerListWidget.render(context, mouseX, mouseY, delta);
+}
+
+// Option 3: Simply don't add widgets you don't want to show
+// Only add widgets that should be visible
+if (shouldShowVillagerList) {
+    this.addDrawableChild(villagerListWidget);
+}
+```
+
+### Prevention
+- **Never use `.visible` field** on Minecraft widgets
+- **Track visibility with boolean flags** if needed
+- **Conditionally add/remove widgets** from the screen instead
+- **Check Minecraft source code** or documentation for proper widget visibility handling
+
+---
+
+## General Compilation Error Prevention
+
+### Best Practices
+1. **Always compile after making changes:**
+   ```bash
+   ./gradlew compileJava compileClientJava
+   ```
+
+2. **Check for compilation errors before testing:**
+   ```bash
+   ./gradlew clean build
+   ```
+
+3. **If mod doesn't load, check logs:**
+   - Look for "Loading X mods" - your mod should be listed
+   - Check for initialization messages from your mod
+   - Look for compilation errors in logs
+
+4. **Common error patterns:**
+   - "cannot find symbol" → Missing import or wrong method name
+   - "incompatible types" → Wrong return type or parameter type
+   - "unconditional patterns" → Java 17 pattern matching limitation
+   - "cannot be resolved or is not a field" → Field doesn't exist (check Minecraft source)
+
+5. **When in doubt:**
+   - Check Minecraft source code for correct API usage
+   - Check Fabric documentation: https://fabricmc.net/wiki/
+   - Verify Java version compatibility (this project uses Java 17)
+   - Test compilation frequently during development
+
+### Quick Reference: Common Minecraft 1.20.1 APIs
+- **Registry access**: `Registries.REGISTRY_NAME.getId(object)` or `Registries.REGISTRY_NAME.get(identifier)`
+- **Resource loading**: `ResourceManager.findResources()` returns `Map<Identifier, Resource>`
+- **Widget visibility**: No `.visible` field - use conditional rendering or add/remove from screen
+- **Pattern matching**: Java 17 requires separate instanceof checks for multiple conditions
+
+---
+
+# Cursor Rules for Data File Loading in Fabric Mods
+
+## Critical: Client Cannot Load Data Files from Mod JAR
+
+### Problem
+When loading data files (files in `src/main/resources/data/`) in a Fabric mod:
+- **Server-side loading works**: `ResourceManager.getAllResources(identifier)` successfully finds data files
+- **Client-side loading fails**: `ResourceManager.getAllResources(identifier)` returns empty list for data files
+- This is because the client's ResourceManager doesn't have access to mod data files the same way the server does
+
+### Solution Pattern
+**ALWAYS load data files on the server and send them to the client via network packets.**
+
+### Implementation Steps
+
+1. **Server-side loading** (in main package):
+   ```java
+   // In server-side code (e.g., packet handler)
+   ResourceManager resourceManager = server.getResourceManager();
+   List<Resource> resources = resourceManager.getAllResources(identifier);
+   if (!resources.isEmpty()) {
+       try (InputStream inputStream = resources.get(0).getInputStream()) {
+           NbtCompound nbt = NbtIo.readCompressed(inputStream);
+           // Send NBT to client via packet
+       }
+   }
+   ```
+
+2. **Create a packet to send data to client**:
+   ```java
+   // In main package - define packet ID
+   public static final Identifier DATA_PACKET_ID = new Identifier("modid", "data_packet");
+   
+   // In server handler
+   PacketByteBuf buf = PacketByteBufs.create();
+   buf.writeNbt(nbt); // or other data
+   ServerPlayNetworking.send(player, DATA_PACKET_ID, buf);
+   ```
+
+3. **Client-side packet handler** (in client package):
+   ```java
+   // In client package
+   ClientPlayNetworking.registerGlobalReceiver(
+       ServerPacketClass.DATA_PACKET_ID, 
+       (client, handler, buf, responseSender) -> {
+           NbtCompound nbt = buf.readNbt();
+           // Process data on client
+       }
+   );
+   ```
+
+### Why This Pattern
+- **Data files are server-authoritative**: Data files define game logic, which should be controlled by the server
+- **Client ResourceManager limitation**: Client's ResourceManager doesn't load mod data files reliably
+- **Network sync**: Ensures client and server have the same data
+- **Security**: Prevents clients from accessing/modifying data files directly
+
+### When to Use
+- Loading NBT structure files
+- Loading JSON data files (recipes, advancements, etc.)
+- Loading any data from `src/main/resources/data/` directory
+- Any time you need to load data files that both client and server need
+
+### When NOT to Use
+- Loading assets (textures, sounds) - these work fine on client with `getResource()`
+- Loading client-only resources - use `getResource()` or `findResources()` for assets
+
+### Example: Structure Loading
+```java
+// Server loads structure and sends to client
+StructureData structure = StructureLoader.loadStructure(id, server);
+// Send NBT to client
+PacketByteBuf buf = PacketByteBufs.create();
+buf.writeNbt(nbt);
+buf.writeString(structureName);
+ServerPlayNetworking.send(player, STRUCTURE_DATA_PACKET_ID, buf);
+
+// Client receives and creates StructureData
+ClientPlayNetworking.registerGlobalReceiver(STRUCTURE_DATA_PACKET_ID, (client, handler, buf, responseSender) -> {
+    NbtCompound nbt = buf.readNbt();
+    String name = buf.readString();
+    StructureData structure = new StructureData(nbt, name);
+    // Use structure on client
+});
+```
+
+### Prevention
+- **Never try to load data files on the client** - always load on server and send via packet
+- **Test both client and server loading** - if client loading fails, use server-side loading pattern
+- **Document data file loading** - note in code comments that data files must be loaded server-side
+
+---
+
+# Cursor Rules for BlockEntityRenderer Translation
+
+## Critical: BlockEntityRenderer Matrices Are Already Positioned
+
+### Problem
+When rendering blocks using `BlockEntityRenderer`, the `MatrixStack` is **already positioned at the block entity's position** (0, 0, 0 relative to the block). Translating again to the block position causes a **double translation**, making blocks render at the wrong location or become invisible.
+
+**❌ WRONG (Double Translation):**
+```java
+@Override
+public void render(GhostBlockEntity entity, float tickDelta, MatrixStack matrices,
+                  VertexConsumerProvider vertexConsumers, int light, int overlay) {
+    BlockPos pos = entity.getPos();
+    // WRONG: Matrices are already at block position, this translates twice!
+    matrices.translate(pos.getX(), pos.getY(), pos.getZ());
+    // Then renderBlockAsEntity centers at (0.5, 0.5, 0.5) relative to this
+    blockRenderer.renderBlockAsEntity(state, matrices, vertexConsumers, light, overlay);
+}
+```
+
+**✅ CORRECT:**
+```java
+@Override
+public void render(GhostBlockEntity entity, float tickDelta, MatrixStack matrices,
+                  VertexConsumerProvider vertexConsumers, int light, int overlay) {
+    // CORRECT: Matrices are already at block position (0,0,0 relative to block)
+    // renderBlockAsEntity automatically centers at (0.5, 0.5, 0.5) relative to current position
+    // No translation needed - just render directly
+    blockRenderer.renderBlockAsEntity(state, matrices, vertexConsumers, light, overlay);
+}
+```
+
+### Solution Pattern
+**When called from BlockEntityRenderer:**
+- Matrices are already at block position (0, 0, 0 relative to block)
+- `renderBlockAsEntity` automatically centers the block at (0.5, 0.5, 0.5) relative to current position
+- **Do NOT translate to block position** - just render directly
+
+**When called from world render events:**
+- Matrices start at world origin
+- **DO translate** to block position first: `matrices.translate(pos.getX(), pos.getY(), pos.getZ())`
+- `renderBlockAsEntity` will then center it correctly
+
+### Implementation Example
+```java
+public static boolean renderGhostBlock(BlockPos pos, BlockState state, MatrixStack matrices,
+                                      VertexConsumerProvider vertexConsumers, float alpha, 
+                                      int lightLevel, boolean manageBlendState) {
+    // manageBlendState=true means called from BlockEntityRenderer
+    // manageBlendState=false means called from world render event
+    
+    matrices.push();
+    
+    if (manageBlendState) {
+        // Called from BlockEntityRenderer - matrices already at block position
+        // No translation needed - renderBlockAsEntity will center automatically
+    } else {
+        // Called from world render event - need to translate to block position
+        matrices.translate(pos.getX(), pos.getY(), pos.getZ());
+    }
+    
+    blockRenderer.renderBlockAsEntity(state, matrices, vertexConsumers, lightLevel, overlay);
+    matrices.pop();
+}
+```
+
+### Why This Happens
+- **BlockEntityRenderer**: Minecraft positions the matrices at the block entity's world position before calling `render()`
+- **World Render Events**: Matrices start at world origin (0, 0, 0), so you must translate to the block position
+- **renderBlockAsEntity**: This method expects to center the block at (0.5, 0.5, 0.5) relative to the current matrix position
+
+### Prevention
+- **Always check the context** - is this called from BlockEntityRenderer or world render event?
+- **Use a flag parameter** (like `manageBlendState`) to indicate the rendering context
+- **Test rendering** - if blocks are invisible or at wrong positions, check for double translation
+- **Document in code comments** - note whether matrices need translation or not
+
+### Related Issues
+- Blocks rendering at wrong positions (2x distance from expected)
+- Blocks completely invisible (rendered outside view frustum)
+- Blocks rendering at world origin instead of block position
+

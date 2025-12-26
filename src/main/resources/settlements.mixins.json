@@ -1,0 +1,14 @@
+{
+	"required": true,
+	"package": "com.secretasain.settlements.mixin",
+	"compatibilityLevel": "JAVA_17",
+	"mixins": [
+		"LecternBlockMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}
