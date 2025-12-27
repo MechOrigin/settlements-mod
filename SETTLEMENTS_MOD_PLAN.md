@@ -647,13 +647,13 @@ manager.clearAll();
   - [x] Implement `switchTab(TabType)` method
   - [x] Update button appearance based on active state (updateTabButtons method)
   - [x] Show/hide tab content based on active tab
-- [ ] Add settlement information display
+- [x] Add settlement information display
   - [x] Create information panel widget (basic text rendering)
   - [x] Display settlement name (shown in welcome message)
-  - [ ] Display villager count: "Villagers: X" (TODO: Add to Overview tab)
-  - [ ] Display building count: "Buildings: X" (TODO: Add to Overview tab)
-  - [ ] Display settlement radius: "Radius: X blocks" (TODO: Add to Overview tab)
-  - [ ] Update information when data changes (TODO: Refresh on tab switch)
+  - [x] Display villager count: "Villagers: X" (TODO: Add to Overview tab)
+  - [x] Display building count: "Buildings: X" (TODO: Add to Overview tab)
+  - [x] Display settlement radius: "Radius: X blocks" (TODO: Add to Overview tab)
+  - [x] Update information when data changes (TODO: Refresh on tab switch)
 - [ ] Create UI textures/assets
   - [ ] Create GUI texture file: `textures/gui/settlement_screen.png` (TODO: Optional enhancement)
   - [ ] Design background texture (176x166 pixels) (TODO: Optional enhancement)
@@ -775,6 +775,226 @@ manager.clearAll();
   - [x] Trigger villager scan immediately (refreshes UI list)
   - [x] Update list with latest villager data
   - [ ] Show loading indicator during scan (TODO: Optional enhancement)
+- [x] Create building output display widget (QoL Enhancement)
+  - [x] Create `BuildingOutputWidget.java` similar to `MaterialListWidget`
+  - [x] Position widget on right side of Villagers tab (same size/location as materials widget in Buildings tab)
+  - [x] Display when building is selected in `BuildingSelectionWidget`
+  - [x] Load building outputs from `building_outputs.json` based on building type
+  - [x] Display item outputs with item icons and counts
+  - [x] Calculate and display items per minute based on task execution interval
+  - [x] Load `BuildingOutputConfig` on client side for UI access
+  - [x] **FIX: Proper Server-Side Data Loading and Enhanced Statistics**
+    - [x] **Problem**: Current implementation tries to load NBT structure files on client, which fails per cursor rules (client ResourceManager can't access data files)
+    - [x] **Solution**: Always load all data on server and send to client via packets
+    - [x] **Implementation Steps**:
+      - [x] Enhance `BuildingOutputDataPacket` to send comprehensive crop statistics for farm buildings
+        - [x] Create `CropStatistics` data class to hold crop data (type, count, age distribution, maturity status)
+        - [x] Server-side: Scan actual world for crops in farm building area (not just NBT structure)
+        - [x] Calculate crop ages using block state properties (AGE_7, AGE_3, etc.)
+        - [x] Determine crop maturity status (mature/immature) and count each
+        - [x] Calculate growth time remaining for immature crops (based on crop type and current age)
+        - [x] Estimate harvest time (when next crops will be ready)
+        - [x] Calculate expected items per harvest cycle (mature crops × average drops per crop)
+        - [x] Send all crop statistics to client via packet
+      - [x] Remove client-side NBT loading from `BuildingOutputWidget` (follow cursor rules)
+      - [x] Update `BuildingOutputWidget.updateWithServerData()` to accept crop statistics
+      - [x] Display crop statistics in widget with detailed breakdown:
+        - [x] Total farmland plots count
+        - [x] Crop type distribution (wheat: 10, carrots: 5, etc.)
+        - [x] Maturity status: "X mature, Y immature"
+        - [x] Age distribution: "Age 0-2: X crops, Age 3-5: Y crops, Age 6-7 (mature): Z crops"
+        - [x] Estimated time until next harvest (for immature crops)
+        - [x] Expected items per harvest cycle (when all mature)
+        - [x] Items per minute calculation (based on task interval and harvest cycle)
+      - [x] For non-farm buildings: Enhance output display with detailed statistics
+        - [x] Show weighted probability percentage for each output
+        - [x] Calculate and display expected average items per task execution
+        - [x] Display items per minute with calculation breakdown
+        - [x] Show drop rate (weight / total weight) as percentage
+      - [x] Add comprehensive tooltip system:
+        - [x] Tooltip rendering implemented in `OutputEntry.renderTooltip()`
+        - [x] For each output item, show tooltip on hover with:
+          - [x] Item name and full identifier (e.g., "minecraft:wheat")
+          - [x] Drop weight and probability percentage
+          - [x] Min/max count per drop
+          - [x] Expected average count per drop: `(min + max) / 2`
+          - [x] Expected items per task: `avg_count × probability`
+          - [x] Items per minute: `items_per_task × tasks_per_minute`
+          - [x] Calculation breakdown: "Based on 200-tick (10s) task interval = 6 tasks/min"
+        - [x] For farm crops, show additional tooltip information:
+          - [x] Crop type and identifier
+          - [x] Current age and max age (e.g., "Age 3/7")
+          - [x] Maturity status: "Mature" or "Immature (X ticks remaining)"
+          - [x] Growth time: "~25 minutes average" or "X minutes remaining"
+          - [x] Average drops per harvest: "1-3 items (avg 2)"
+          - [x] Expected harvest time: "Next harvest in ~X minutes" or "Ready now"
+      - [x] Implement tooltip rendering in `OutputEntry.render()`:
+        - [x] Detect mouse hover over entry
+        - [x] Render tooltip using `DrawContext.drawTooltip()` with proper formatting
+        - [x] Position tooltip to avoid screen edges (with static lock to prevent overlap)
+      - [x] Add visual indicators for crop maturity:
+        - [x] Color-code entries: Green for mature crops, Yellow for near-mature, Gray for immature
+        - [x] Show progress bar for crop growth progress
+        - [x] Display time remaining until maturity (e.g., "5 min remaining")
+      - [x] Fix widget cleanup and overlap issues:
+        - [x] Implement aggressive widget removal when switching buildings
+        - [x] Add cleanup before auto-selection
+        - [x] Add cleanup in render method to catch stale widgets
+        - [x] Implement static tooltip lock to prevent tooltip overlap
+        - [x] Implement explicit widget tracking using HashSet to ensure all widgets are found and removed
+        - [x] Create centralized `removeAllBuildingOutputWidgets()` method for consistent cleanup
+        - [x] Replace all cleanup code with calls to centralized method
+        - [x] Add widgets to tracking set when created
+        - [x] Update render method to use tracking set for efficient widget lookup
+      - [ ] Performance optimizations:
+        - [ ] Cache crop statistics on server (update every 10-20 seconds, not every packet request)
+        - [ ] Only scan world when building is selected (lazy loading)
+        - [ ] Limit crop scanning to building's structure bounds (use StructureData to get area)
+        - [ ] Batch crop age calculations efficiently
+    - [ ] **Technical Notes**:
+      - **Data Loading**: Always use server-side loading per cursor rules (client ResourceManager limitation)
+      - **Crop Scanning**: Use `FarmCropHarvester` logic as reference, but scan without harvesting
+      - **Crop Age Detection**: Use block state properties (Properties.AGE_7 for wheat/carrots/potatoes, Properties.AGE_3 for beetroot)
+      - **Growth Time Calculation**: Most crops mature in ~25 minutes (30000 ticks) under optimal conditions
+      - **Task Interval**: 200 ticks = 10 seconds = 6 tasks per minute
+      - **Tooltip Rendering**: Use `DrawContext.drawTooltip()` or custom rendering with `fill()` and `drawText()`
+      - **Packet Size**: Consider packet size limits when sending crop statistics (may need to limit to top N crops by count)
+
+---
+
+## Building Output Widget - Implementation Architecture
+
+### Current Issues and Root Causes
+
+**Problem 1: Client-Side Data Loading Failure**
+- **Issue**: `BuildingOutputWidget` tries to load NBT structure files on client using `client.getResourceManager()`
+- **Root Cause**: Per cursor rules, client ResourceManager cannot reliably access data files (`src/main/resources/data/`)
+- **Impact**: Farm building statistics show "Loading..." or fail to display crop data
+- **Solution**: Always load data on server and send to client via network packets
+
+**Problem 2: Incomplete Farm Statistics**
+- **Issue**: Widget only shows farmland count from NBT structure, not actual crop statistics
+- **Root Cause**: No world scanning for actual crops, only NBT structure parsing
+- **Impact**: Missing crop type distribution, maturity status, growth times, harvest estimates
+- **Solution**: Server-side world scanning to detect actual crops and calculate statistics
+
+**Problem 3: Missing Tooltips and Verbose Data**
+- **Issue**: No detailed tooltips showing calculation breakdowns, drop rates, crop maturity details
+- **Root Cause**: Tooltip system not implemented
+- **Impact**: Users can't see detailed information about outputs and calculations
+- **Solution**: Implement comprehensive tooltip system with multi-line formatted text
+
+### Proper Implementation Architecture
+
+**Data Flow Pattern (Server → Client)**:
+```
+1. Client: User clicks building in BuildingSelectionWidget
+2. Client: Calls requestBuildingOutputData(building) → sends BuildingOutputDataPacket
+3. Server: Receives packet, loads structure NBT, scans world for crops
+4. Server: Calculates all statistics (crop ages, maturity, harvest times, output rates)
+5. Server: Sends comprehensive data back to client via packet
+6. Client: Receives data, updates BuildingOutputWidget, displays with tooltips
+```
+
+**Server-Side Responsibilities**:
+- Load structure NBT files (server ResourceManager has access)
+- Scan actual world for crops in building area (not just NBT structure)
+- Calculate crop statistics (types, ages, maturity, growth times)
+- Calculate output rates and probabilities for non-farm buildings
+- Send all data to client via network packet
+
+**Client-Side Responsibilities**:
+- Request data from server when building is selected
+- Display received data in widget with proper formatting
+- Render tooltips on hover with detailed information
+- Handle loading states and error messages
+- Never attempt to load data files directly
+
+### Implementation Best Practices
+
+**1. Server-Side Crop Scanning**:
+- Use `StructureData` to get building bounds (min/max BlockPos)
+- Iterate through all blocks in structure area
+- Check if block is a crop block (wheat, carrots, potatoes, beetroot, modded crops)
+- Read crop age from block state properties:
+  - `Properties.AGE_7` for wheat, carrots, potatoes (0-7)
+  - `Properties.AGE_3` for beetroot (0-3)
+  - Generic age property detection for modded crops
+- Determine maturity: crop is mature when age == max_age
+- Calculate growth time remaining: `(max_age - current_age) × avg_growth_time_per_stage`
+
+**2. Crop Statistics Calculation**:
+- Group crops by type (wheat, carrots, etc.)
+- Count mature vs immature crops per type
+- Calculate age distribution (bins: 0-2, 3-5, 6-7 for AGE_7 crops)
+- Estimate harvest time: average growth time for immature crops
+- Calculate expected items per harvest: `mature_crops × avg_drops_per_crop`
+- Calculate items per minute: `(expected_items_per_harvest / harvest_cycle_time) × 60`
+
+**3. Tooltip System Design**:
+- Create `TooltipRenderer` utility class for consistent tooltip rendering
+- Use `DrawContext.fill()` for tooltip background (semi-transparent dark)
+- Use `DrawContext.drawBorder()` for tooltip border
+- Render multi-line text with proper spacing
+- Position tooltip to avoid screen edges (adjust X/Y based on mouse position)
+- Show different tooltip content based on entry type (output item vs crop statistic)
+
+**4. Performance Considerations**:
+- Cache crop statistics on server (don't scan every packet request)
+- Update cache every 10-20 seconds or when crops change
+- Limit crop scanning to building's structure bounds (don't scan entire settlement)
+- Batch crop age calculations efficiently
+- Consider packet size limits (may need to limit crop statistics to top N by count)
+
+**5. Error Handling**:
+- Handle missing structure NBT files gracefully
+- Handle unloaded chunks (skip crops in unloaded areas)
+- Handle invalid crop blocks (non-crop blocks in farmland)
+- Show appropriate error messages in widget ("Unable to load data", "No crops detected", etc.)
+
+### Data Structures
+
+**CropStatistics Class** (server-side):
+```java
+public class CropStatistics {
+    public final String cropType;           // "wheat", "carrots", etc.
+    public final int totalCount;            // Total crops of this type
+    public final int matureCount;           // Mature crops ready to harvest
+    public final int immatureCount;          // Immature crops
+    public final Map<Integer, Integer> ageDistribution; // Age -> count map
+    public final int averageAge;            // Average age of all crops
+    public final int estimatedTicksUntilHarvest; // For immature crops
+    public final double expectedItemsPerHarvest; // When all mature
+}
+```
+
+**BuildingOutputData Class** (packet data):
+```java
+public class BuildingOutputData {
+    public final UUID buildingId;
+    public final boolean isFarm;
+    public final List<OutputEntry> outputs;        // For non-farm buildings
+    public final List<CropStatistics> cropStats;   // For farm buildings
+    public final int farmlandCount;                // Total farmland plots
+    public final double estimatedItemsPerMinute;   // Overall production rate
+}
+```
+
+### Testing Checklist
+
+- [ ] Widget displays correctly when building is selected
+- [ ] Widget hides when no building is selected
+- [ ] Server loads structure NBT files correctly
+- [ ] Server scans world for crops correctly
+- [ ] Crop statistics are calculated accurately
+- [ ] Packet sends all data to client
+- [ ] Client displays crop statistics correctly
+- [ ] Tooltips show on hover with correct information
+- [ ] Tooltips position correctly (don't go off-screen)
+- [ ] Items per minute calculations are accurate
+- [ ] Farm buildings show crop data, non-farm buildings show output config
+- [ ] Error handling works (missing files, unloaded chunks, etc.)
+- [ ] Performance is acceptable (no lag when selecting buildings)
 
 ---
 
@@ -843,6 +1063,18 @@ manager.clearAll();
   - [x] Deposit items into nearby chests automatically
   - [x] Re-enable auto-rally after deposit
   - [x] Wall assignments produce: flowers (40%), bones (20%), feathers (30%), seeds (10%)
+- [x] Implement active farm crop harvesting system (QoL Enhancement)
+  - [x] Change farm building outputs from passive generation to active gathering
+  - [x] Load structure data for farm buildings to determine crop area
+  - [x] Scan farmland blocks within building NBT structure area
+  - [x] Check if crops on farmland are mature (age property check)
+  - [x] Support right-click harvest mod detection (if present, use that first) - implemented using FabricLoader, simulates mod behavior
+  - [x] Implement vanilla crop harvesting (break and replant)
+  - [x] Collect all crop drops and add to villager accumulated items
+  - [x] Support modded crops (tomatoes, cabbage, onions, etc.) - generic age property detection
+  - [x] Add crop maturity detection for modded crops - uses AGE_7 and AGE_3 properties
+  - [x] Handle different crop types (wheat, carrots, potatoes, beetroot, modded)
+  - [x] Ensure crops are only harvested when mature (not prematurely)
 
 ### 4.4 Settlement Expansion
 **Goal**: Add progression and expansion mechanics
@@ -873,6 +1105,204 @@ manager.clearAll();
 - [ ] Create unlock system for structures and features (TODO: Future enhancement)
 - [ ] Implement settlement reputation system (TODO: Future enhancement)
 - [ ] Add rewards for leveling up settlements (TODO: Future enhancement)
+
+### 4.5 Trader Hut Building System
+**Goal**: Add trader hut building that attracts wandering traders and allows custom trading with assigned villagers
+
+**Tasks**:
+- [ ] Create trader hut NBT structure file
+  - [ ] Design trader hut structure (small building with trading area)
+  - [ ] Create `lvl1_trader_hut.nbt` structure file
+  - [ ] Place structure file in `src/main/resources/data/settlements/structures/`
+  - [ ] Ensure structure includes appropriate blocks (workstation, trading area)
+  - [ ] Test structure loads correctly via `StructureLoader`
+- [ ] Add trader hut to building tab structure list
+  - [ ] Verify structure appears in `StructureListWidget` when scanning structures directory
+  - [ ] Ensure structure is categorized correctly (commercial category)
+  - [ ] Test structure can be selected and placed via build mode
+- [ ] Implement wandering trader attraction system
+  - [ ] Create `WanderingTraderAttractionSystem.java` class
+  - [ ] Add server tick handler to scan for wandering traders near trader huts
+  - [ ] Scan for `EntityType.WANDERING_TRADER` within 64 blocks of each trader hut building
+  - [ ] Calculate distance from trader hut position to wandering trader
+  - [ ] Use AABB bounding box for efficient entity queries
+  - [ ] Store attracted traders in building data (optional: track for UI display)
+  - [ ] Implement attraction logic (move traders toward hut, or just detect presence)
+  - [ ] Add periodic scanning (every 5-10 seconds to avoid performance issues)
+- [ ] Create special trader villager system
+  - [ ] Design approach for converting assigned villager to special trader
+    - [ ] Option A: Extend `VillagerEntity` class (may require mixin)
+    - [ ] Option B: Create custom `TraderVillagerEntity` class extending `VillagerEntity`
+    - [ ] Option C: Use data component/NBT to mark villager as special trader (recommended)
+  - [ ] Implement villager assignment detection for trader huts
+    - [ ] Check if assigned building is trader hut type
+    - [ ] Trigger conversion when villager is assigned to trader hut
+  - [ ] Create `TraderVillagerData` class to store trader-specific data
+    - [ ] Add field: `UUID buildingId` (which trader hut they're assigned to)
+    - [ ] Add field: `List<TradeOffer>` customTradeOffers
+    - [ ] Add field: `boolean isSpecialTrader` flag
+    - [ ] Implement `toNbt()` and `fromNbt()` methods
+  - [ ] Implement villager conversion logic
+    - [ ] When villager assigned to trader hut, mark as special trader
+    - [ ] Load custom trade table from JSON config
+    - [ ] Replace villager's default trades with custom trades
+    - [ ] Store original profession data (for unassignment)
+  - [ ] Handle villager unassignment
+    - [ ] When villager unassigned from trader hut, restore original profession
+    - [ ] Clear custom trade offers
+    - [ ] Reset to normal villager behavior
+- [ ] Create custom trade table JSON configuration system
+  - [ ] Design JSON format for trade tables
+    - [ ] Structure: List of trade offers with input/output items
+    - [ ] Include: Input item (fruit/vegetable blocks), output item, quantity, max uses
+    - [ ] Support multiple trade levels/tiers
+  - [ ] Create `TraderTradeConfig.java` data class
+    - [ ] Add fields: `List<TradeOfferConfig> trades`, `int maxUses`, `int experienceReward`
+    - [ ] Implement JSON deserialization (Gson or similar)
+  - [ ] Create `TradeOfferConfig.java` data class
+    - [ ] Add fields: `Identifier inputItem`, `int inputCount`, `Identifier outputItem`, `int outputCount`, `int maxUses`
+    - [ ] Support for fruit/vegetable block inputs (9 items = 1 block conversion)
+  - [ ] Create trade table JSON file: `trader_hut_trades.json`
+    - [ ] Place in `src/main/resources/data/settlements/trades/`
+    - [ ] Define trades accepting fruit/vegetable blocks
+    - [ ] Include vanilla blocks: watermelon blocks, pumpkin blocks
+    - [ ] Support modded blocks: apple blocks, strawberry blocks, cabbage blocks, onion blocks, etc.
+    - [ ] Define output items for each trade
+  - [ ] Implement trade table loading system
+    - [ ] Create `TraderTradeLoader.java` utility class
+    - [ ] Load JSON file from resources (server-side only, per cursor rules)
+    - [ ] Parse JSON into `TraderTradeConfig` objects
+    - [ ] Cache loaded trade configs to avoid reloading
+    - [ ] Handle missing/invalid JSON files gracefully
+- [ ] Implement fruit/vegetable block acceptance system
+  - [ ] Create `FruitVegetableBlockRegistry.java` utility class
+    - [ ] Maintain list of accepted fruit/vegetable block identifiers
+    - [ ] Support both vanilla and modded blocks
+    - [ ] Add method: `isFruitVegetableBlock(Identifier)` to check if block is accepted
+    - [ ] Add method: `getItemEquivalent(Block)` to convert block to item (9 items = 1 block)
+  - [ ] Implement block-to-item conversion logic
+    - [ ] When player offers fruit/vegetable block, convert to 9 items
+    - [ ] Check if block is in accepted list
+    - [ ] Create item stack with count = 9 × block count
+    - [ ] Use converted items for trade validation
+  - [ ] Add support for condensed blocks (9x9 = 1 block)
+    - [ ] Create `BlockCompactor.java` utility class
+    - [ ] Implement `compactItemsToBlock(List<ItemStack>)` method
+      - [ ] Check if 9 items of same type can be compacted
+      - [ ] Return block state if compactable, null otherwise
+    - [ ] Implement `expandBlockToItems(BlockState, int)` method
+      - [ ] Convert 1 block to 9 items
+      - [ ] Return list of item stacks
+  - [ ] Integrate block acceptance into trade system
+    - [ ] Modify trade offer validation to accept fruit/vegetable blocks
+    - [ ] Convert blocks to items before trade processing
+    - [ ] Update trade UI to show block icons when applicable
+- [ ] Create trader hut building data structure
+  - [ ] Add `TraderHutData` class extending or containing building data
+    - [ ] Add field: `List<UUID> attractedTraders` (wandering trader entity IDs)
+    - [ ] Add field: `UUID assignedVillagerId` (special trader villager)
+    - [ ] Add field: `boolean hasSpecialTrader` flag
+    - [ ] Implement `toNbt()` and `fromNbt()` methods
+  - [ ] Store trader hut data in `Building` class
+    - [ ] Add optional `NbtCompound customData` field to Building class
+    - [ ] Store trader hut-specific data in customData
+    - [ ] Load/save customData in Building serialization
+- [ ] Implement UI integration for trader huts
+  - [ ] Display trader hut status in building list
+    - [ ] Show "Has Trader" or "No Trader" status
+    - [ ] Show "X Wandering Traders Attracted" count
+    - [ ] Show assigned villager name if assigned
+  - [ ] Add trader hut assignment UI
+    - [ ] When trader hut is selected, show "Assign Villager" button
+    - [ ] Open villager selection dialog (similar to work assignment)
+    - [ ] Filter villagers to show only available/unassigned villagers
+    - [ ] On assignment, trigger villager conversion
+  - [ ] Display custom trade offers in UI (optional)
+    - [ ] Show available trades when trader hut is selected
+    - [ ] Display input/output items with icons
+    - [ ] Show trade availability (uses remaining)
+- [ ] Add network packet support
+  - [ ] Create `AssignTraderVillagerPacket.java` for assigning villager to trader hut
+    - [ ] Send: Building ID, Villager ID
+    - [ ] Server validates assignment and converts villager
+    - [ ] Send response packet with success/failure
+  - [ ] Create `UnassignTraderVillagerPacket.java` for unassigning villager
+    - [ ] Send: Building ID, Villager ID
+    - [ ] Server restores villager to original profession
+  - [ ] Register packets in network initialization
+- [ ] Implement trade interaction system
+  - [ ] Override villager trade interaction for special traders
+    - [ ] Check if villager is special trader (has TraderVillagerData)
+    - [ ] Load custom trade offers from config
+    - [ ] Display custom trades instead of default trades
+    - [ ] Handle fruit/vegetable block input conversion
+  - [ ] Create trade offer validation
+    - [ ] Check if input is fruit/vegetable block
+    - [ ] Convert block to items (9 items per block)
+    - [ ] Validate trade offer matches converted items
+    - [ ] Execute trade if valid
+  - [ ] Handle trade completion
+    - [ ] Remove items/blocks from player inventory
+    - [ ] Give output items to player
+    - [ ] Update trade uses remaining
+    - [ ] Grant experience if configured
+
+**Technical Notes**:
+- **Wandering Trader Attraction**: Use `World.getEntitiesByType(EntityType.WANDERING_TRADER, boundingBox, predicate)` for efficient scanning
+- **Villager Conversion**: Recommended approach is using NBT/data components to mark villagers as special traders rather than extending class (simpler, less invasive)
+- **Trade Table Loading**: Always load JSON on server-side per cursor rules (client ResourceManager limitation)
+- **Block-to-Item Conversion**: 9 items = 1 block (standard Minecraft compacting ratio)
+- **Fruit/Vegetable Blocks**: Support both vanilla (watermelon, pumpkin) and modded blocks (apple, strawberry, cabbage, onion, etc.)
+- **Performance**: Scan for wandering traders every 5-10 seconds, not every tick
+- **Trade System**: Use Minecraft's existing `Merchant` and `TradeOffer` APIs where possible
+
+**Data Structures**:
+```java
+TraderHutData {
+    UUID buildingId
+    List<UUID> attractedTraders  // Wandering trader entity IDs
+    UUID assignedVillagerId      // Special trader villager
+    boolean hasSpecialTrader
+}
+
+TraderVillagerData {
+    UUID villagerId
+    UUID buildingId
+    VillagerProfession originalProfession
+    List<TradeOffer> customTrades
+    boolean isSpecialTrader
+}
+
+TradeOfferConfig {
+    Identifier inputItem      // e.g., "minecraft:melon_block"
+    int inputCount            // Usually 1 (block) = 9 items
+    Identifier outputItem     // What player receives
+    int outputCount
+    int maxUses
+}
+```
+
+**JSON Trade Table Format** (`trader_hut_trades.json`):
+```json
+{
+  "trades": [
+    {
+      "inputItem": "minecraft:melon_block",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 2,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "minecraft:pumpkin",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    }
+  ]
+}
+```
 
 **Future Enhancement: Building Tier-Based Leveling System**
 - [ ] Design building tier/level system for structures
@@ -1032,48 +1462,70 @@ src/main/
 
 ## Next Steps (Implementation Order)
 
-### Immediate Next Steps
-1. [ ] Set up project structure and basic mod class
-   - [ ] Rename `ExampleMod` to `SettlementsMod`
-   - [ ] Update mod ID in `fabric.mod.json`
-   - [ ] Create package structure: `com.example.settlements`
-   - [ ] Set up basic mod initialization
-2. [ ] Implement lectern block interaction (Phase 1.1)
-   - [ ] Create `LecternBlockMixin`
-   - [ ] Implement right-click interception
-   - [ ] Create basic `SettlementScreen` stub
-3. [ ] Create settlement data management (Phase 1.2)
-   - [ ] Implement `Settlement` class
-   - [ ] Create `SettlementManager`
-   - [ ] Add persistence system
-4. [ ] Implement villager tracking (Phase 1.3)
-   - [ ] Create `VillagerData` class
-   - [ ] Implement scanning system
-   - [ ] Add to UI display
-5. [ ] Build NBT structure loading (Phase 2.1)
-   - [ ] Create `StructureLoader`
-   - [ ] Implement `StructureData` class
-   - [ ] Test with sample structure file
-6. [ ] Implement build mode foundation (Phase 2.2)
-   - [ ] Create `BuildModeHandler`
-   - [ ] Add build mode activation
-   - [ ] Implement basic state management
-7. [ ] Add structure preview rendering (Phase 2.3)
-   - [ ] Create ghost block renderer
-   - [ ] Implement positioning system
-   - [ ] Add rotation controls
-8. [ ] Create building reservation system (Phase 2.4)
-   - [ ] Implement `Building` class
-   - [ ] Add barrier placement
-   - [ ] Create building list UI
-9. [ ] Implement material management (Phase 2.5)
-   - [ ] Create `MaterialManager`
-   - [ ] Add material calculation
-   - [ ] Implement material input system
-10. [ ] Add sequential block placement (Phase 2.6)
-    - [ ] Create placement queue
-    - [ ] Implement placement algorithm
-    - [ ] Add progress tracking
+### Completed Core Features ✅
+- [x] Project structure and mod initialization
+- [x] Lectern block interaction and UI system
+- [x] Settlement data management and persistence
+- [x] Villager tracking and scanning
+- [x] NBT structure loading
+- [x] Build mode foundation and controls
+- [x] Structure preview rendering (ghost blocks)
+- [x] Building reservation system
+- [x] Material management and display
+- [x] Sequential block placement
+- [x] Building output widget with server-side data loading
+- [x] Widget cleanup and overlap fixes
+
+### Recommended Next Steps
+
+#### Priority 1: Performance Optimizations (Building Output Widget)
+1. [ ] **Cache crop statistics on server**
+   - [ ] Create `CropStatisticsCache` class
+   - [ ] Update cache every 10-20 seconds instead of on every packet request
+   - [ ] Invalidate cache when crops are harvested/planted
+   - [ ] Return cached data when available
+
+2. [ ] **Implement lazy loading for crop scanning**
+   - [ ] Only scan world when building is selected
+   - [ ] Cancel scan if building selection changes before scan completes
+   - [ ] Show "Scanning..." indicator during scan
+
+3. [ ] **Optimize crop scanning bounds**
+   - [ ] Use StructureData to get exact building bounds
+   - [ ] Limit scanning to building's structure area only
+   - [ ] Skip chunks that are outside building bounds
+
+#### Priority 2: UI Enhancements
+1. [ ] **Visual progress bars for buildings**
+   - [ ] Create custom progress bar widget
+   - [ ] Replace text percentage with visual bar
+   - [ ] Add color coding (red/yellow/green)
+
+2. [ ] **Villager search/filter functionality**
+   - [ ] Add search text field at top of villager list
+   - [ ] Filter by name, profession, employment status
+   - [ ] Real-time filtering as user types
+
+3. [ ] **Material availability indicators**
+   - [ ] Sync material counts to client
+   - [ ] Enable/disable "Start Building" button based on materials
+   - [ ] Show tooltips for missing materials
+
+#### Priority 3: Optional Enhancements
+1. [ ] **Enhanced build mode features**
+   - [ ] Grid-snap mode (5-block increments)
+   - [ ] Raycast-based block targeting
+   - [ ] Reverse rotation keybind (Shift+R)
+
+2. [ ] **Confirmation dialogs**
+   - [ ] Building cancellation confirmation
+   - [ ] Fire villager confirmation
+   - [ ] Structure placement confirmation
+
+3. [ ] **Visual feedback improvements**
+   - [ ] Progress indicator particles during construction
+   - [ ] Loading indicators for async operations
+   - [ ] Better tab button styling
 
 ---
 

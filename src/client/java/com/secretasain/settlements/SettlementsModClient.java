@@ -64,6 +64,20 @@ public class SettlementsModClient implements ClientModInitializer {
 			com.secretasain.settlements.building.BuildModeOverlay.render(context, tickDelta);
 		});
 		
+		// Load building output config on client (for UI widget)
+		// Try to load once when resource manager becomes available
+		// Note: Client ResourceManager may not have access to data files (per cursor rules)
+		// This is expected to fail, but we try once anyway to avoid spam
+		final boolean[] configLoadAttempted = {false};
+		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			if (!configLoadAttempted[0] && client.getResourceManager() != null) {
+				configLoadAttempted[0] = true;
+				// Try to load - will fail gracefully if client can't access data files
+				// The load() method now checks if already loaded to prevent repeated attempts
+				com.secretasain.settlements.settlement.BuildingOutputConfig.load(client.getResourceManager());
+			}
+		});
+		
 		SettlementsMod.LOGGER.info("Settlements Mod Client initialized");
 	}
 }

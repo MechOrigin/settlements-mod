@@ -143,23 +143,13 @@ public class VillagerDepositSystem {
                     villagerData.getEntityId());
             }
         } else {
-            // Continue pathfinding to lectern
-            boolean pathStarted = villager.getNavigation().startMovingTo(
+            // Continue pathfinding to lectern - keep trying until they reach it
+            villager.getNavigation().startMovingTo(
                 lecternPos.getX() + 0.5,
                 lecternPos.getY() + 0.5,
                 lecternPos.getZ() + 0.5,
                 1.0
             );
-            
-            // If pathfinding fails and villager is very far, teleport them closer
-            if (!pathStarted && distanceSq > 64.0) {
-                BlockPos safePos = findSafePositionNearLectern(lecternPos, world);
-                if (safePos != null) {
-                    villager.teleport(safePos.getX() + 0.5, safePos.getY() + 0.5, safePos.getZ() + 0.5);
-                    SettlementsMod.LOGGER.info("Teleported villager {} closer to lectern for deposit", 
-                        villagerData.getEntityId());
-                }
-            }
         }
     }
     
@@ -303,26 +293,6 @@ public class VillagerDepositSystem {
         }
         
         return remaining;
-    }
-    
-    /**
-     * Finds a safe position near the lectern for teleporting.
-     */
-    private static BlockPos findSafePositionNearLectern(BlockPos lecternPos, ServerWorld world) {
-        for (int x = -2; x <= 2; x++) {
-            for (int z = -2; z <= 2; z++) {
-                BlockPos testPos = lecternPos.add(x, 0, z);
-                int topY = world.getTopY(net.minecraft.world.Heightmap.Type.WORLD_SURFACE, testPos.getX(), testPos.getZ());
-                BlockPos groundPos = new BlockPos(testPos.getX(), topY, testPos.getZ());
-                
-                if (world.getBlockState(groundPos).isAir() && 
-                    !world.getBlockState(groundPos.down()).isAir()) {
-                    return groundPos;
-                }
-            }
-        }
-        
-        return lecternPos;
     }
     
     /**

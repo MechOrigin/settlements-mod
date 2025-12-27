@@ -24,7 +24,15 @@ import java.util.UUID;
  */
 public class SettlementScreen extends Screen {
     private Settlement settlement;
-    private TabType activeTab = TabType.OVERVIEW;
+    TabType activeTab = TabType.OVERVIEW;
+    
+    /**
+     * Gets the currently active tab.
+     * @return The active tab type
+     */
+    public TabType getActiveTab() {
+        return activeTab;
+    }
     
     // Tab buttons
     private ButtonWidget overviewTabButton;
@@ -57,6 +65,12 @@ public class SettlementScreen extends Screen {
     // Material display widget
     private MaterialListWidget materialListWidget;
     private com.secretasain.settlements.settlement.Building lastSelectedBuilding; // Track selection to avoid recreating widget every frame
+    
+    // Building output display widget (for Villagers tab)
+    private BuildingOutputWidget buildingOutputWidget;
+    private com.secretasain.settlements.settlement.Building lastSelectedBuildingForOutput; // Track selection to avoid recreating widget every frame
+    // Track all BuildingOutputWidget instances explicitly to ensure proper cleanup
+    private final java.util.Set<BuildingOutputWidget> allBuildingOutputWidgets = new java.util.HashSet<>();
     
     // Configurable material list widget position and size
     // Default to a larger, more visible size
@@ -298,7 +312,8 @@ public class SettlementScreen extends Screen {
             "lvl1_oak_wall.nbt", "lvl2_oak_wall.nbt", "lvl3_oak_wall.nbt",
             "lvl1_oak_cartographer.nbt", "lvl1_oak_farm.nbt", "lvl1_oak_fence.nbt",
             "lvl1_oak_gate.nbt", "lvl1_oak_smithing.nbt",
-            "lvl1_oak_house.nbt", "lvl2_oak_house.nbt", "lvl3_oak_house.nbt"
+            "lvl1_oak_house.nbt", "lvl2_oak_house.nbt", "lvl3_oak_house.nbt",
+            "lvl1_trader_hut.nbt"
         };
         
         try {
@@ -521,8 +536,20 @@ public class SettlementScreen extends Screen {
                 return true; // Button handled the click
             }
         }
-        // Then check other widgets
-        return super.mouseClicked(mouseX, mouseY, button);
+        
+        // CRITICAL: Make a defensive copy of children to avoid ConcurrentModificationException
+        // Some widgets may modify the children list during click handling
+        java.util.List<net.minecraft.client.gui.Element> childrenCopy = new java.util.ArrayList<>(this.children());
+        
+        // Iterate over the copy instead of the original list
+        for (net.minecraft.client.gui.Element element : childrenCopy) {
+            // Only process if element is still in the actual children list (might have been removed)
+            if (this.children().contains(element) && element.mouseClicked(mouseX, mouseY, button)) {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
     @Override
@@ -653,6 +680,71 @@ public class SettlementScreen extends Screen {
             }
         }
         
+        // CRITICAL: Remove BuildingOutputWidget instances that don't belong to the current selection
+        // This must happen BEFORE super.render() to prevent rendering stale widgets
+        if (activeTab == TabType.VILLAGERS) {
+            // Get the currently selected building
+            com.secretasain.settlements.settlement.Building currentBuilding = null;
+            if (buildingSelectionWidget != null) {
+                currentBuilding = buildingSelectionWidget.getSelectedBuilding();
+            }
+            
+            // Remove ALL BuildingOutputWidget instances that don't match the current building
+            // Use our tracking set for efficient lookup
+            java.util.List<BuildingOutputWidget> widgetsToRemove = new java.util.ArrayList<>();
+            for (BuildingOutputWidget widget : allBuildingOutputWidgets) {
+                // Remove if it doesn't match current building OR if current building is null
+                if (currentBuilding == null || widget.getBuilding() == null || 
+                    !widget.getBuilding().getId().equals(currentBuilding.getId())) {
+                    widgetsToRemove.add(widget);
+                }
+            }
+            
+            // Also check children() for any widgets not in our tracking set
+            for (net.minecraft.client.gui.Element child : this.children()) {
+                if (child instanceof BuildingOutputWidget) {
+                    BuildingOutputWidget widget = (BuildingOutputWidget) child;
+                    if (!allBuildingOutputWidgets.contains(widget)) {
+                        // Widget not in tracking set - add it and check if it should be removed
+                        allBuildingOutputWidgets.add(widget);
+                        if (currentBuilding == null || widget.getBuilding() == null || 
+                            !widget.getBuilding().getId().equals(currentBuilding.getId())) {
+                            if (!widgetsToRemove.contains(widget)) {
+                                widgetsToRemove.add(widget);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Remove mismatched widgets
+            for (BuildingOutputWidget widget : widgetsToRemove) {
+                try {
+                    this.remove(widget);
+                    this.children().remove(widget);
+                    allBuildingOutputWidgets.remove(widget);
+                    com.secretasain.settlements.SettlementsMod.LOGGER.info("Removed BuildingOutputWidget for wrong building: {}", 
+                        widget.getBuilding() != null ? widget.getBuilding().getId() : "null");
+                } catch (Exception e) {
+                    // Already removed, but still remove from tracking
+                    allBuildingOutputWidgets.remove(widget);
+                    this.children().remove(widget);
+                }
+            }
+            
+            // Also ensure only the correct widget is in the reference
+            if (buildingOutputWidget != null) {
+                if (currentBuilding == null || buildingOutputWidget.getBuilding() == null ||
+                    !buildingOutputWidget.getBuilding().getId().equals(currentBuilding.getId())) {
+                    buildingOutputWidget = null;
+                }
+            }
+        } else {
+            // Not on Villagers tab - remove ALL BuildingOutputWidget instances
+            this.children().removeIf(child -> child instanceof BuildingOutputWidget);
+            buildingOutputWidget = null;
+        }
+        
         // Call super.render() - this will render all children INCLUDING the widget ON TOP of sidebar/dialog
         super.render(context, mouseX, mouseY, delta);
         
@@ -662,8 +754,111 @@ public class SettlementScreen extends Screen {
         }
         
         // Explicitly render material list widget if it exists and is in children
-        if (activeTab == TabType.BUILDINGS && materialListWidget != null && this.children().contains(materialListWidget)) {
-            materialListWidget.render(context, mouseX, mouseY, delta);
+        if (activeTab == TabType.BUILDINGS) {
+            if (materialListWidget != null) {
+                if (this.children().contains(materialListWidget)) {
+                    materialListWidget.render(context, mouseX, mouseY, delta);
+                } else {
+                    // Widget exists but not in children - re-add it
+                    com.secretasain.settlements.SettlementsMod.LOGGER.warn("MaterialListWidget exists but not in children - re-adding");
+                    this.addDrawableChild(materialListWidget);
+                    materialListWidget.render(context, mouseX, mouseY, delta);
+                }
+            } else {
+                // Widget is null - try to create it if a building is selected
+                if (buildingListWidget != null) {
+                    com.secretasain.settlements.settlement.Building selected = buildingListWidget.getSelectedBuilding();
+                    if (selected != null) {
+                        com.secretasain.settlements.SettlementsMod.LOGGER.info("MaterialListWidget is null but building is selected - recreating");
+                        createMaterialListWidget();
+                        if (materialListWidget != null) {
+                            materialListWidget.render(context, mouseX, mouseY, delta);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Explicitly render building output widget if it exists and is in children
+        // Also ensure only one widget exists (clean up any duplicates)
+        if (activeTab == TabType.VILLAGERS) {
+            // Get the currently selected building
+            com.secretasain.settlements.settlement.Building currentBuilding = null;
+            if (buildingSelectionWidget != null) {
+                currentBuilding = buildingSelectionWidget.getSelectedBuilding();
+            }
+            
+            // Remove any duplicate or wrong widgets first
+            java.util.List<BuildingOutputWidget> widgets = new java.util.ArrayList<>();
+            BuildingOutputWidget correctWidget = null;
+            for (var child : this.children()) {
+                if (child instanceof BuildingOutputWidget) {
+                    BuildingOutputWidget widget = (BuildingOutputWidget) child;
+                    widgets.add(widget);
+                    // Find the widget that matches the current building
+                    if (currentBuilding != null && widget.getBuilding() != null &&
+                        widget.getBuilding().getId().equals(currentBuilding.getId())) {
+                        correctWidget = widget;
+                    }
+                }
+            }
+            
+            // Remove all widgets that don't match the current building
+            for (BuildingOutputWidget widget : widgets) {
+                if (widget != correctWidget) {
+                    try {
+                        // Aggressive removal - use multiple methods
+                        this.remove(widget);
+                        this.children().remove(widget);
+                        com.secretasain.settlements.SettlementsMod.LOGGER.info("Removed duplicate/wrong BuildingOutputWidget for building: {}", 
+                            widget.getBuilding() != null ? widget.getBuilding().getId() : "null");
+                    } catch (Exception e) {
+                        // Try to remove from children even if remove() fails
+                        this.children().remove(widget);
+                    }
+                }
+            }
+            
+            // Final cleanup pass - remove any remaining BuildingOutputWidget instances that don't match
+            java.util.List<net.minecraft.client.gui.Element> finalCleanup = new java.util.ArrayList<>(this.children());
+            for (net.minecraft.client.gui.Element child : finalCleanup) {
+                if (child instanceof BuildingOutputWidget) {
+                    BuildingOutputWidget widget = (BuildingOutputWidget) child;
+                    if (widget != correctWidget) {
+                        try {
+                            this.remove(widget);
+                            this.children().remove(widget);
+                            com.secretasain.settlements.SettlementsMod.LOGGER.info("Final cleanup in render: Removed BuildingOutputWidget for building: {}", 
+                                widget.getBuilding() != null ? widget.getBuilding().getId() : "null");
+                        } catch (Exception e) {
+                            this.children().remove(widget);
+                        }
+                    }
+                }
+            }
+            
+            // Update reference to the correct widget
+            if (correctWidget != null) {
+                buildingOutputWidget = correctWidget;
+            } else if (currentBuilding == null) {
+                // No building selected, clear reference
+                buildingOutputWidget = null;
+            }
+            
+            if (buildingOutputWidget != null && this.children().contains(buildingOutputWidget)) {
+                buildingOutputWidget.render(context, mouseX, mouseY, delta);
+            }
+        }
+        
+        // Explicitly render building list widget if it exists and is in children (for debugging)
+        if (activeTab == TabType.BUILDINGS && buildingListWidget != null) {
+            if (this.children().contains(buildingListWidget)) {
+                // Widget is in children, parent's render should handle it, but log for debugging
+                com.secretasain.settlements.SettlementsMod.LOGGER.debug("BuildingListWidget is in children and should be rendered by parent");
+            } else {
+                com.secretasain.settlements.SettlementsMod.LOGGER.warn("BuildingListWidget exists but NOT in children - re-adding");
+                this.addDrawableChild(buildingListWidget);
+            }
         }
         
         // CRITICAL: Explicitly ensure buttons are visible and in children list during render
@@ -924,6 +1119,18 @@ public class SettlementScreen extends Screen {
                 if (buildingSelectionWidget != null && !showingBuildingSelection) {
                     buildingSelectionWidget.updateEntries();
                 }
+                
+                // Update building output widget if building selection changed
+                // Widget creation is handled by selection callbacks, not in render loop
+                // Only check if widget needs to be removed (if no building selected)
+                if (buildingSelectionWidget != null) {
+                    com.secretasain.settlements.settlement.Building selected = buildingSelectionWidget.getSelectedBuilding();
+                    if (selected == null && buildingOutputWidget != null) {
+                        // No building selected but widget exists - remove it
+                        this.children().removeIf(child -> child instanceof BuildingOutputWidget);
+                        buildingOutputWidget = null;
+                    }
+                }
                 if (settlement.getVillagers().isEmpty()) {
                     // Show empty message below title
                     context.drawText(
@@ -977,6 +1184,19 @@ public class SettlementScreen extends Screen {
     private void switchTab(TabType tab) {
         this.activeTab = tab;
         updateTabButtons();
+        
+        // Handle Overview tab - refresh settlement information display
+        if (tab == TabType.OVERVIEW) {
+            // Close other tab widgets when switching to Overview
+            closeBuildingWidgets();
+            closeVillagerWidgets();
+            
+            // Overview tab displays information directly from settlement object
+            // The settlement object is kept up-to-date through various network packets,
+            // so the displayed information will reflect the current state
+            // No additional refresh needed - data is read fresh on each render
+            return;
+        }
         
         // Show/hide structure list sidebar based on active tab
         boolean showBuildings = (tab == TabType.BUILDINGS);
@@ -1199,6 +1419,17 @@ public class SettlementScreen extends Screen {
                 refreshVillagersButton.setY(buttonY);
                 refreshVillagersButton.visible = true;
                 refreshVillagersButton.active = true;
+            }
+            
+            // Widget creation is handled by selection callbacks, not in render loop
+            // Only ensure widget is removed if no building is selected
+            if (buildingSelectionWidget != null) {
+                com.secretasain.settlements.settlement.Building selected = buildingSelectionWidget.getSelectedBuilding();
+                if (selected == null && buildingOutputWidget != null) {
+                    // No building selected but widget exists - remove it
+                    this.children().removeIf(child -> child instanceof BuildingOutputWidget);
+                    buildingOutputWidget = null;
+                }
             }
         } else {
             // Completely remove and destroy widgets when not on Buildings tab
@@ -1475,6 +1706,7 @@ public class SettlementScreen extends Screen {
      */
     private void createBuildingListWidget() {
         if (activeTab != TabType.BUILDINGS) {
+            com.secretasain.settlements.SettlementsMod.LOGGER.debug("createBuildingListWidget called but not on BUILDINGS tab (activeTab: {})", activeTab);
             return; // Don't create widget if not on Buildings tab
         }
         
@@ -1543,44 +1775,37 @@ public class SettlementScreen extends Screen {
         // CRITICAL FIX: Defer widget creation to avoid ConcurrentModificationException
         // We can't modify the children list while mouseClicked is iterating over it
         this.buildingListWidget.setOnSelectionChangedCallback(building -> {
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("Building selection changed callback fired: {}", building != null ? building.getId() : "null");
-            if (building != null) {
-                com.secretasain.settlements.SettlementsMod.LOGGER.info("Selected building has {} required materials", building.getRequiredMaterials().size());
-                if (!building.getRequiredMaterials().isEmpty()) {
-                    for (java.util.Map.Entry<net.minecraft.util.Identifier, Integer> entry : building.getRequiredMaterials().entrySet()) {
-                        com.secretasain.settlements.SettlementsMod.LOGGER.info("  Required: {} x{}", entry.getKey(), entry.getValue());
-                    }
-                } else {
-                    com.secretasain.settlements.SettlementsMod.LOGGER.warn("Selected building has EMPTY required materials map!");
-                }
-            }
             lastSelectedBuilding = building;
             
-            // CRITICAL FIX: Defer widget creation to next tick to avoid ConcurrentModificationException
-            // We can't modify children list while mouseClicked is iterating over it
-            if (this.client != null) {
-                this.client.execute(() -> {
+            // Create material widget when building is selected
+            if (activeTab == TabType.BUILDINGS) {
+                if (this.client != null) {
+                    // Defer to next tick to avoid ConcurrentModificationException
+                    this.client.execute(() -> {
+                        if (activeTab == TabType.BUILDINGS) {
+                            createMaterialListWidget();
+                            updateBuildingActionButtons();
+                        }
+                    });
+                } else {
                     createMaterialListWidget();
                     updateBuildingActionButtons();
-                });
-            } else {
-                // Fallback if client is null (shouldn't happen, but be safe)
-                createMaterialListWidget();
-                updateBuildingActionButtons();
+                }
             }
         });
         
         // Set available materials for the building list widget
         this.buildingListWidget.setAvailableMaterials(settlement.getMaterials());
         
+        // Ensure entries are updated after widget is fully set up
+        this.buildingListWidget.updateEntries();
+        
         // Auto-select first building if available (so materials are shown by default)
-        // CRITICAL FIX: Manually trigger callback after auto-selection since it doesn't fire on programmatic selection
         if (!this.buildingListWidget.children().isEmpty()) {
             this.buildingListWidget.setSelected(this.buildingListWidget.children().get(0));
             com.secretasain.settlements.settlement.Building firstBuilding = this.buildingListWidget.getSelectedBuilding();
             if (firstBuilding != null) {
                 lastSelectedBuilding = firstBuilding;
-                com.secretasain.settlements.SettlementsMod.LOGGER.info("Auto-selected first building: {} - triggering material list creation", firstBuilding.getId());
                 // Manually trigger the callback since programmatic selection doesn't fire it
                 this.buildingListWidget.triggerSelectionChanged(firstBuilding);
             }
@@ -1970,15 +2195,33 @@ public class SettlementScreen extends Screen {
         // Update action buttons (this will hide unload button if materials are now empty)
         updateBuildingActionButtons();
         
-        // Update building assignment sidebar if on Villagers tab (to refresh assignment counts)
-        if (activeTab == TabType.VILLAGERS && buildingSelectionWidget != null && !showingBuildingSelection) {
-            // Update the widget with new settlement data
-            buildingSelectionWidget.updateEntries();
-        }
-        
-        // Update villager list widget to reflect any changes
-        if (villagerListWidget != null) {
-            villagerListWidget.updateEntries();
+        // Update widgets based on active tab to show real-time changes
+        if (activeTab == TabType.VILLAGERS) {
+            // Update building assignment sidebar (to refresh assignment counts)
+            if (buildingSelectionWidget != null && !showingBuildingSelection) {
+                buildingSelectionWidget.updateEntries();
+            }
+            // Widget creation is handled by selection callbacks, not here
+            // The selection callback will create the widget when a building is selected
+            // Update villager list widget
+            if (villagerListWidget != null) {
+                villagerListWidget.updateEntries();
+            }
+        } else if (activeTab == TabType.BUILDINGS) {
+            // Update building list widget (to refresh assignment counts, status, etc.)
+            if (buildingListWidget != null) {
+                buildingListWidget.updateEntries();
+            }
+            // Update material list widget if building is selected
+            if (materialListWidget != null && this.children().contains(materialListWidget)) {
+                materialListWidget.updateAvailableMaterials(settlement.getMaterials());
+                materialListWidget.updateEntries();
+            }
+        } else {
+            // Update villager list widget for other tabs if it exists
+            if (villagerListWidget != null) {
+                villagerListWidget.updateEntries();
+            }
         }
         
         com.secretasain.settlements.SettlementsMod.LOGGER.info("Updated settlement data in UI - buildings: {}, materials: {}", 
@@ -2064,6 +2307,64 @@ public class SettlementScreen extends Screen {
             }
         });
         
+        // Set callback for selection changes (to show output widget)
+        buildingSelectionWidget.setOnSelectionChanged((building) -> {
+            // Update the output widget when a building is selected
+            if (activeTab == TabType.VILLAGERS) {
+                com.secretasain.settlements.SettlementsMod.LOGGER.info("Building selection changed: {}", 
+                    building != null ? building.getId() : "null");
+                
+                // CRITICAL: Remove ALL existing widgets FIRST using our tracking set
+                // This ensures old widgets are always removed when switching buildings
+                removeAllBuildingOutputWidgets();
+                
+                // NOW check if we should skip recreation (after cleanup, this should rarely be true)
+                if (building != null) {
+                    // Check if a widget for this building still exists (shouldn't happen after cleanup, but check anyway)
+                    for (net.minecraft.client.gui.Element child : this.children()) {
+                        if (child instanceof BuildingOutputWidget) {
+                            BuildingOutputWidget widget = (BuildingOutputWidget) child;
+                            if (widget.getBuilding() != null && 
+                                widget.getBuilding().getId().equals(building.getId())) {
+                                // Widget for this building still exists (shouldn't happen, but handle it)
+                                buildingOutputWidget = widget;
+                                com.secretasain.settlements.SettlementsMod.LOGGER.info("Widget for building {} still exists after cleanup, reusing it", building.getId());
+                                return;
+                            }
+                        }
+                    }
+                }
+                
+                // Clear pending data for old building (only if switching to different building)
+                if (building == null || buildingOutputWidget == null || 
+                    buildingOutputWidget.getBuilding() == null ||
+                    !buildingOutputWidget.getBuilding().getId().equals(building.getId())) {
+                    // Only clear if we're switching to a different building
+                    // Keep pending data if it's for the newly selected building
+                    UUID newBuildingId = building != null ? building.getId() : null;
+                    if (newBuildingId != null) {
+                        // Keep pending data for the new building, clear others
+                        PendingOutputData keepData = pendingOutputData.get(newBuildingId);
+                        pendingOutputData.clear();
+                        if (keepData != null) {
+                            pendingOutputData.put(newBuildingId, keepData);
+                        }
+                    } else {
+                        pendingOutputData.clear();
+                    }
+                }
+                
+                lastSelectedBuildingForOutput = building;
+                
+                // Always create widget when building is selected (even if null, will show "No outputs")
+                if (building != null) {
+                    createBuildingOutputWidget();
+                } else {
+                    com.secretasain.settlements.SettlementsMod.LOGGER.info("No building selected, widget removed");
+                }
+            }
+        });
+        
         // Add widget to children if not already there
         if (!this.children().contains(buildingSelectionWidget)) {
             this.addDrawableChild(buildingSelectionWidget);
@@ -2071,6 +2372,31 @@ public class SettlementScreen extends Screen {
         
         // Update entries to refresh assignment counts
         buildingSelectionWidget.updateEntries();
+        
+        // CRITICAL: Remove ALL existing BuildingOutputWidget instances before auto-selecting
+        // This prevents widgets from previous tab switches or selections from persisting
+        removeAllBuildingOutputWidgets();
+        
+        // Auto-select first building if available (so output widget is shown by default)
+        // This must happen AFTER updateEntries() so the children list is populated
+        if (!buildingSelectionWidget.children().isEmpty()) {
+            var firstEntry = buildingSelectionWidget.children().get(0);
+            if (firstEntry instanceof BuildingSelectionWidget.BuildingEntry) {
+                BuildingSelectionWidget.BuildingEntry buildingEntry = (BuildingSelectionWidget.BuildingEntry) firstEntry;
+                buildingSelectionWidget.setSelected(buildingEntry);
+                // Trigger the selection callback to create the widget
+                if (buildingSelectionWidget.onSelectionChanged != null) {
+                    com.secretasain.settlements.settlement.Building firstBuilding = buildingEntry.getBuilding();
+                    if (firstBuilding != null) {
+                        com.secretasain.settlements.SettlementsMod.LOGGER.info("Auto-selecting first building: {} ({})", 
+                            firstBuilding.getId(), firstBuilding.getStructureType());
+                        buildingSelectionWidget.onSelectionChanged.accept(firstBuilding);
+                    }
+                }
+            }
+        } else {
+            com.secretasain.settlements.SettlementsMod.LOGGER.info("No buildings available for selection in BuildingSelectionWidget");
+        }
     }
     
     /**
@@ -2358,44 +2684,15 @@ public class SettlementScreen extends Screen {
         int materialListHeight = this.materialListHeight > 0 ? this.materialListHeight : defaultHeight;
         
         // Get required materials - ONLY from selected building (don't sum up all buildings)
-        // CRITICAL FIX: Only show materials for selected building to prevent incrementing
         java.util.Map<net.minecraft.util.Identifier, Integer> requiredMaterials;
         if (selectedBuilding != null) {
-            // Show materials for selected building only
-            requiredMaterials = new java.util.HashMap<>(selectedBuilding.getRequiredMaterials()); // Create a copy to avoid unmodifiable map issues
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("Selected building {} has {} required materials", 
-                selectedBuilding.getId(), requiredMaterials.size());
-            if (!requiredMaterials.isEmpty()) {
-                for (java.util.Map.Entry<net.minecraft.util.Identifier, Integer> entry : requiredMaterials.entrySet()) {
-                    com.secretasain.settlements.SettlementsMod.LOGGER.info("  - {}: {}", entry.getKey(), entry.getValue());
-                }
-            } else {
-                com.secretasain.settlements.SettlementsMod.LOGGER.warn("Selected building {} has empty required materials map!", selectedBuilding.getId());
-            }
+            requiredMaterials = new java.util.HashMap<>(selectedBuilding.getRequiredMaterials());
         } else {
-            // No building selected - show empty materials list
-            // CRITICAL FIX: Don't sum up all buildings - this causes incrementing issue
             requiredMaterials = new java.util.HashMap<>();
-            com.secretasain.settlements.SettlementsMod.LOGGER.debug("No building selected - showing empty materials list");
-        }
-        
-        // Debug logging
-        if (selectedBuilding != null) {
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("Creating material list widget for building {} with {} required materials", 
-                selectedBuilding.getId(), requiredMaterials != null ? requiredMaterials.size() : 0);
-        } else {
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("Creating material list widget for all buildings with {} total required materials", 
-                requiredMaterials != null ? requiredMaterials.size() : 0);
-        }
-        if (requiredMaterials != null && !requiredMaterials.isEmpty()) {
-            for (java.util.Map.Entry<net.minecraft.util.Identifier, Integer> entry : requiredMaterials.entrySet()) {
-                com.secretasain.settlements.SettlementsMod.LOGGER.info("  Material: {} x{}", entry.getKey(), entry.getValue());
-            }
         }
         
         // Always create the widget, even if empty (will show "No materials required" message)
-        java.util.Map<net.minecraft.util.Identifier, Integer> materialsToShow = requiredMaterials != null ? requiredMaterials : new java.util.HashMap<>();
-        com.secretasain.settlements.SettlementsMod.LOGGER.info("Creating MaterialListWidget with {} materials", materialsToShow.size());
+        java.util.Map<net.minecraft.util.Identifier, Integer> materialsToShow = requiredMaterials;
         
         this.materialListWidget = new MaterialListWidget(
             this.client,
@@ -2413,10 +2710,6 @@ public class SettlementScreen extends Screen {
         
         // Force update entries to ensure materials are displayed
         this.materialListWidget.updateEntries();
-        
-        com.secretasain.settlements.SettlementsMod.LOGGER.info("Material list widget created at position ({}, {}), size {}x{}, entries: {}", 
-            materialListX, materialListY, materialListWidth, materialListHeight, 
-            this.materialListWidget.children().size());
     }
     
     /**
@@ -2465,6 +2758,236 @@ public class SettlementScreen extends Screen {
     public int[] getMaterialListSize() {
         if (materialListWidth > 0 && materialListHeight > 0) {
             return new int[]{materialListWidth, materialListHeight};
+        }
+        return null;
+    }
+    
+    /**
+     * Creates and displays the building output widget when a building is selected in Villagers tab.
+     * Similar to MaterialListWidget but shows building outputs instead of required materials.
+     */
+    private void createBuildingOutputWidget() {
+        if (activeTab != TabType.VILLAGERS) {
+            com.secretasain.settlements.SettlementsMod.LOGGER.debug("createBuildingOutputWidget called but not in Villagers tab (activeTab={})", activeTab);
+            return;
+        }
+        
+        com.secretasain.settlements.SettlementsMod.LOGGER.info("createBuildingOutputWidget called for Villagers tab");
+        
+        // Get selected building from BuildingSelectionWidget
+        com.secretasain.settlements.settlement.Building selectedBuilding = null;
+        if (buildingSelectionWidget != null) {
+            selectedBuilding = buildingSelectionWidget.getSelectedBuilding();
+        }
+        
+        if (selectedBuilding == null) {
+            // No building selected, remove widget if it exists
+            com.secretasain.settlements.SettlementsMod.LOGGER.info("createBuildingOutputWidget: No building selected, removing widget");
+            this.children().removeIf(child -> child instanceof BuildingOutputWidget);
+            buildingOutputWidget = null;
+            lastSelectedBuildingForOutput = null;
+            return;
+        }
+        
+        com.secretasain.settlements.SettlementsMod.LOGGER.info("createBuildingOutputWidget: Building selected: {} ({})", 
+            selectedBuilding.getId(), selectedBuilding.getStructureType());
+        
+        // CRITICAL: Always remove ALL existing widgets first to prevent overlapping
+        // This ensures we don't show data from the wrong building
+        removeAllBuildingOutputWidgets();
+        
+        // Note: lastSelectedBuildingForOutput is tracked but not used for widget creation
+        // Widget is created based on current selection from BuildingSelectionWidget
+        
+        // Determine building type from structure name
+        String structureName = getStructureName(selectedBuilding.getStructureType());
+        String buildingType = determineBuildingType(structureName);
+        
+        // Always create widget, even if buildingType is null (will show "No outputs configured")
+        // This fixes the bug where empty buildings don't show the widget
+        if (buildingType == null) {
+            buildingType = "unknown"; // Use placeholder so widget is created
+        }
+        
+        // Position widget same as MaterialListWidget (right side of screen)
+        int screenWidth = 400;
+        int screenHeight = 280;
+        int x = (this.width - screenWidth) / 2;
+        int y = (this.height - screenHeight) / 2;
+        
+        // Use same position and size as MaterialListWidget
+        int defaultX = x + screenWidth + 30; // Right side
+        int defaultY = y + 50; // Below title
+        int defaultWidth = 200; // Same width
+        int defaultHeight = 180; // Same height
+        
+        // Create the output widget
+        // Remove all existing widgets first using our tracking set
+        removeAllBuildingOutputWidgets();
+        
+        buildingOutputWidget = new BuildingOutputWidget(
+            this.client,
+            defaultWidth,
+            defaultHeight,
+            defaultY,
+            defaultY + defaultHeight,
+            20, // Item height (slightly larger for more info)
+            selectedBuilding,
+            buildingType
+        );
+        
+        // Set X position
+        buildingOutputWidget.setLeftPos(defaultX);
+        this.addDrawableChild(buildingOutputWidget);
+        
+        // Check if we have pending data for this building
+        UUID buildingId = selectedBuilding.getId();
+        PendingOutputData pending = pendingOutputData.get(buildingId);
+        if (pending != null) {
+            // Apply pending data immediately
+            com.secretasain.settlements.SettlementsMod.LOGGER.info("Found pending data for building {}, applying to widget: outputs={}, farmlandCount={}, cropStats={}", 
+                buildingId, pending.outputs != null ? pending.outputs.size() : "null", pending.farmlandCount,
+                pending.cropStats != null ? pending.cropStats.size() : "null");
+            buildingOutputWidget.updateWithServerData(pending.outputs, pending.farmlandCount, pending.cropStats);
+            pendingOutputData.remove(buildingId);
+            com.secretasain.settlements.SettlementsMod.LOGGER.info("Applied pending output data to newly created widget for building {}", buildingId);
+        } else {
+            // No pending data - request from server
+            // Only request if we don't already have data (avoid duplicate requests)
+            com.secretasain.settlements.SettlementsMod.LOGGER.info("No pending data, requesting from server for building {}", buildingId);
+            requestBuildingOutputData(selectedBuilding);
+        }
+        
+        com.secretasain.settlements.SettlementsMod.LOGGER.info("Created BuildingOutputWidget for building {} (type: {}), pending data: {}", 
+            selectedBuilding.getId(), buildingType, pending != null ? "yes" : "no");
+    }
+    
+    /**
+     * Requests building output data from the server.
+     */
+    private void requestBuildingOutputData(com.secretasain.settlements.settlement.Building building) {
+        if (building == null || settlement == null) {
+            com.secretasain.settlements.SettlementsMod.LOGGER.warn("Cannot request building output data: building={}, settlement={}", 
+                building, settlement);
+            return;
+        }
+        
+        com.secretasain.settlements.SettlementsMod.LOGGER.info("Requesting building output data: buildingId={}, structureType={}", 
+            building.getId(), building.getStructureType());
+        
+        var buf = net.fabricmc.fabric.api.networking.v1.PacketByteBufs.create();
+        buf.writeUuid(building.getId());
+        buf.writeUuid(settlement.getId());
+        
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
+            com.secretasain.settlements.network.BuildingOutputDataPacket.ID, buf);
+    }
+    
+    /**
+     * Pending building output data cache - stores responses that arrive before widget is ready.
+     */
+    private java.util.Map<UUID, PendingOutputData> pendingOutputData = new java.util.HashMap<>();
+    
+    /**
+     * Stores pending output data for a building.
+     */
+    private static class PendingOutputData {
+        final java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> outputs;
+        final int farmlandCount;
+        final java.util.List<com.secretasain.settlements.settlement.CropStatistics> cropStats;
+        
+        PendingOutputData(java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> outputs, 
+                         int farmlandCount,
+                         java.util.List<com.secretasain.settlements.settlement.CropStatistics> cropStats) {
+            this.outputs = outputs;
+            this.farmlandCount = farmlandCount;
+            this.cropStats = cropStats;
+        }
+    }
+    
+    /**
+     * Updates building output widget with data received from server.
+     * If widget doesn't exist yet, stores data as pending to apply when widget is created.
+     */
+    public void updateBuildingOutputData(UUID buildingId, 
+                                        java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> outputs,
+                                        int farmlandCount) {
+        updateBuildingOutputData(buildingId, outputs, farmlandCount, null);
+    }
+    
+    /**
+     * Updates building output widget with data received from server (with crop statistics).
+     */
+    public void updateBuildingOutputData(UUID buildingId, 
+                                        java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> outputs,
+                                        int farmlandCount,
+                                        java.util.List<com.secretasain.settlements.settlement.CropStatistics> cropStats) {
+        com.secretasain.settlements.SettlementsMod.LOGGER.info("updateBuildingOutputData called: buildingId={}, widget={}, widgetBuilding={}, outputs={}, farmlandCount={}", 
+            buildingId, 
+            buildingOutputWidget != null ? "exists" : "null",
+            buildingOutputWidget != null && buildingOutputWidget.getBuilding() != null ? buildingOutputWidget.getBuilding().getId() : "null",
+            outputs != null ? outputs.size() : "null",
+            farmlandCount);
+        
+        if (buildingOutputWidget != null) {
+            if (buildingOutputWidget.getBuilding() != null && 
+                buildingOutputWidget.getBuilding().getId().equals(buildingId)) {
+                // Widget exists and matches - apply data immediately
+                buildingOutputWidget.updateWithServerData(outputs, farmlandCount, cropStats);
+                // Clear pending data for this building
+                pendingOutputData.remove(buildingId);
+                com.secretasain.settlements.SettlementsMod.LOGGER.info("Applied output data to existing widget for building {}", buildingId);
+                return;
+            } else {
+                // Widget exists but for different building - store as pending
+                pendingOutputData.put(buildingId, new PendingOutputData(outputs, farmlandCount, cropStats));
+                com.secretasain.settlements.SettlementsMod.LOGGER.info("Widget exists for different building {}, stored as pending for {}", 
+                    buildingOutputWidget.getBuilding() != null ? buildingOutputWidget.getBuilding().getId() : "null", buildingId);
+            }
+        } else {
+            // Widget doesn't exist yet - store as pending
+            // This is normal - data can arrive before widget is created
+            pendingOutputData.put(buildingId, new PendingOutputData(outputs, farmlandCount, cropStats));
+            com.secretasain.settlements.SettlementsMod.LOGGER.info("Widget not ready yet, stored as pending: buildingId={} (will apply when widget is created)", buildingId);
+            
+            // Try to create widget if we're in Villagers tab and have a selected building
+            if (activeTab == TabType.VILLAGERS && buildingSelectionWidget != null) {
+                com.secretasain.settlements.settlement.Building selected = buildingSelectionWidget.getSelectedBuilding();
+                if (selected != null && selected.getId().equals(buildingId)) {
+                    // This is the selected building - create widget now
+                    com.secretasain.settlements.SettlementsMod.LOGGER.debug("Creating widget for selected building {} since data arrived", buildingId);
+                    createBuildingOutputWidget();
+                }
+            }
+        }
+    }
+    
+    /**
+     * Gets the structure name from the identifier (helper method).
+     */
+    private String getStructureName(net.minecraft.util.Identifier structureType) {
+        String path = structureType.getPath();
+        if (path.contains("/")) {
+            path = path.substring(path.lastIndexOf('/') + 1);
+        }
+        if (path.endsWith(".nbt")) {
+            path = path.substring(0, path.length() - 4);
+        }
+        return path.toLowerCase();
+    }
+    
+    /**
+     * Determines the building type for config lookup (helper method).
+     */
+    private String determineBuildingType(String structureName) {
+        if (structureName.contains("wall") || structureName.contains("fence") || structureName.contains("gate")) {
+            return "wall";
+        } else if (structureName.contains("smithing") || structureName.contains("smith")) {
+            return "smithing";
+        } else if (structureName.contains("farm") || structureName.contains("farmland")) {
+            return "farm";
+        } else if (structureName.contains("cartographer") || structureName.contains("cartography")) {
+            return "cartographer";
         }
         return null;
     }
@@ -2536,6 +3059,73 @@ public class SettlementScreen extends Screen {
     }
     
     /**
+     * Removes ALL BuildingOutputWidget instances from the screen and clears tracking.
+     * This method uses our explicit tracking set to ensure all widgets are found and removed.
+     */
+    private void removeAllBuildingOutputWidgets() {
+        int removedCount = 0;
+        
+        // Create a copy of the set to avoid concurrent modification
+        java.util.Set<BuildingOutputWidget> widgetsToRemove = new java.util.HashSet<>(allBuildingOutputWidgets);
+        
+        // Also check the reference
+        if (buildingOutputWidget != null && !widgetsToRemove.contains(buildingOutputWidget)) {
+            widgetsToRemove.add(buildingOutputWidget);
+        }
+        
+        // Remove all widgets using multiple methods
+        for (BuildingOutputWidget widget : widgetsToRemove) {
+            try {
+                // Method 1: Use Screen.remove() - removes from children and drawables
+                this.remove(widget);
+                
+                // Method 2: Explicitly remove from children list
+                this.children().remove(widget);
+                
+                // Method 3: Remove from our tracking set
+                allBuildingOutputWidgets.remove(widget);
+                
+                removedCount++;
+                com.secretasain.settlements.SettlementsMod.LOGGER.info("Removed BuildingOutputWidget for building: {}", 
+                    widget.getBuilding() != null ? widget.getBuilding().getId() : "null");
+            } catch (Exception e) {
+                // Widget might already be removed, but still remove from tracking
+                allBuildingOutputWidgets.remove(widget);
+                this.children().remove(widget);
+                removedCount++;
+                com.secretasain.settlements.SettlementsMod.LOGGER.debug("Exception removing widget (likely already removed): {}", e.getMessage());
+            }
+        }
+        
+        // Final cleanup pass - check children() for any remaining widgets
+        java.util.List<net.minecraft.client.gui.Element> childrenCopy = new java.util.ArrayList<>(this.children());
+        for (net.minecraft.client.gui.Element child : childrenCopy) {
+            if (child instanceof BuildingOutputWidget) {
+                BuildingOutputWidget widget = (BuildingOutputWidget) child;
+                try {
+                    this.remove(widget);
+                    this.children().remove(widget);
+                    allBuildingOutputWidgets.remove(widget);
+                    removedCount++;
+                    com.secretasain.settlements.SettlementsMod.LOGGER.info("Removed additional BuildingOutputWidget from children list");
+                } catch (Exception e) {
+                    this.children().remove(widget);
+                    allBuildingOutputWidgets.remove(widget);
+                    removedCount++;
+                }
+            }
+        }
+        
+        // Force clear the widget reference
+        buildingOutputWidget = null;
+        
+        // CRITICAL: Clear tooltip state to prevent tooltips from persisting after widget removal
+        BuildingOutputWidget.clearTooltipState();
+        
+        com.secretasain.settlements.SettlementsMod.LOGGER.info("Removed all BuildingOutputWidget instances. Total removed: {}", removedCount);
+    }
+    
+    /**
      * Closes all villager-related widgets when switching away from Villagers tab.
      */
     private void closeVillagerWidgets() {
@@ -2547,6 +3137,14 @@ public class SettlementScreen extends Screen {
             this.children().removeIf(child -> child == buildingSelectionWidget);
             buildingSelectionWidget = null;
         }
+        
+        // Remove building output widget
+        removeAllBuildingOutputWidgets();
+        lastSelectedBuildingForOutput = null;
+        // Clear pending data when switching away from Villagers tab
+        pendingOutputData.clear();
+        // CRITICAL: Clear tooltip state when switching away from Villagers tab
+        BuildingOutputWidget.clearTooltipState();
         
         // Hide and move villager-related buttons off-screen
         if (refreshVillagersButton != null) {
@@ -2563,7 +3161,7 @@ public class SettlementScreen extends Screen {
         }
     }
     
-    private enum TabType {
+    enum TabType {
         OVERVIEW,
         BUILDINGS,
         VILLAGERS,

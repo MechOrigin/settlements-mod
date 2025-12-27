@@ -3,7 +3,8 @@
 	"package": "com.secretasain.settlements.mixin",
 	"compatibilityLevel": "JAVA_17",
 	"mixins": [
-		"LecternBlockMixin"
+		"LecternBlockMixin",
+		"VillagerEntityMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

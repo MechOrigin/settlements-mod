@@ -4,6 +4,7 @@ import com.secretasain.settlements.SettlementsMod;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
@@ -121,9 +122,22 @@ public class TaskExecutionSystem {
             return; // No task for this building type
         }
         
-        // Generate outputs using JSON config
-        Random random = new Random();
-        List<ItemStack> outputs = BuildingOutputConfig.generateOutputs(buildingType, random);
+        List<ItemStack> outputs;
+        
+        // For farm buildings, use active crop harvesting instead of passive generation
+        if ("farm".equals(buildingType)) {
+            // Use active harvesting system
+            MinecraftServer server = world.getServer();
+            if (server != null) {
+                outputs = FarmCropHarvester.harvestCrops(building, world, server);
+            } else {
+                outputs = new java.util.ArrayList<>();
+            }
+        } else {
+            // For other building types, use passive generation from JSON config
+            Random random = new Random();
+            outputs = BuildingOutputConfig.generateOutputs(buildingType, random);
+        }
         
         if (outputs.isEmpty()) {
             return; // No outputs generated

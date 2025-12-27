@@ -11,6 +11,7 @@ import net.minecraft.util.Identifier;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * Widget for selecting a building to assign a villager to.
@@ -21,6 +22,7 @@ public class BuildingSelectionWidget extends AlwaysSelectedEntryListWidget<Build
     private final VillagerData villager;
     private final com.secretasain.settlements.settlement.Settlement settlement;
     private BiConsumer<VillagerData, UUID> onBuildingSelected;
+    Consumer<Building> onSelectionChanged; // Callback for when selection changes (for output widget) - package private for access
     
     public VillagerData getVillager() {
         return villager;
@@ -37,10 +39,26 @@ public class BuildingSelectionWidget extends AlwaysSelectedEntryListWidget<Build
     }
     
     /**
-     * Sets the callback to be called when a building is selected.
+     * Sets the callback to be called when a building is selected (for assignment).
      */
     public void setOnBuildingSelected(BiConsumer<VillagerData, UUID> callback) {
         this.onBuildingSelected = callback;
+    }
+    
+    /**
+     * Sets the callback to be called when selection changes (for output widget display).
+     */
+    public void setOnSelectionChanged(Consumer<Building> callback) {
+        this.onSelectionChanged = callback;
+    }
+    
+    /**
+     * Gets the currently selected building.
+     * @return The selected building, or null if none selected
+     */
+    public Building getSelectedBuilding() {
+        BuildingEntry entry = this.getSelectedOrNull();
+        return entry != null ? entry.getBuilding() : null;
     }
     
     /**
@@ -118,12 +136,24 @@ public class BuildingSelectionWidget extends AlwaysSelectedEntryListWidget<Build
                         mouseY >= entryY && mouseY <= entryY + this.itemHeight) {
                         
                         // Select the entry
+                        BuildingEntry previouslySelected = this.getSelectedOrNull();
+                        // Always trigger callbacks on click (even if same building)
+                        // This ensures widget updates on first click
+                        boolean selectionChanged = (previouslySelected != entry);
                         this.setSelected(entry);
                         
-                        // Trigger callback immediately on click (only if villager is set)
+                        // Trigger assignment callback if villager is set (for work assignment)
                         if (onBuildingSelected != null && villager != null) {
+                            // Always trigger on click, not just on change
                             onBuildingSelected.accept(villager, entry.getBuilding().getId());
                         }
+                        
+                        // Always trigger selection changed callback on click
+                        // This ensures widget updates immediately on first click
+                        if (onSelectionChanged != null) {
+                            onSelectionChanged.accept(entry.getBuilding());
+                        }
+                        
                         return true;
                     }
                 }

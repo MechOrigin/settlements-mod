@@ -28,6 +28,9 @@ public class SettlementsMod implements ModInitializer {
 		// Register villager scanning system
 		com.secretasain.settlements.settlement.VillagerScanningSystem.register();
 		
+		// Register wandering trader attraction system
+		com.secretasain.settlements.trader.WanderingTraderAttractionSystem.register();
+		
 		// Register villager pathfinding system
 		com.secretasain.settlements.settlement.VillagerPathfindingSystem.register();
 		
@@ -52,10 +55,15 @@ public class SettlementsMod implements ModInitializer {
 		com.secretasain.settlements.network.UnloadInventoryPacket.register();
 		com.secretasain.settlements.network.HireFireVillagerPacket.register();
 		com.secretasain.settlements.network.AssignWorkPacket.register();
+		com.secretasain.settlements.network.BuildingOutputDataPacket.register();
 		
 		// Load building output config when server starts
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			com.secretasain.settlements.settlement.BuildingOutputConfig.load(server.getResourceManager());
+			// Load trader trade config
+			com.secretasain.settlements.trader.TraderTradeLoader.load(server.getResourceManager());
+			// Register modded farming blocks (in case mods load after this mod)
+			com.secretasain.settlements.trader.FruitVegetableBlockRegistry.registerModdedBlocks();
 		});
 	}
 }

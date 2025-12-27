@@ -78,12 +78,9 @@ public class BuildingListWidget extends AlwaysSelectedEntryListWidget<BuildingLi
     public void updateEntries() {
         this.clearEntries();
         for (Building building : buildings) {
-            // CRITICAL: Filter out COMPLETED buildings - they should be removed automatically
-            // Completed buildings are still in the settlement data for historical tracking,
-            // but they shouldn't appear in the active building list
-            if (building.getStatus() != BuildingStatus.COMPLETED) {
-                this.addEntry(new BuildingEntry(building, availableMaterials));
-            }
+            // Show ALL buildings including COMPLETED ones so user can click on them
+            // This allows viewing materials for completed buildings too
+            this.addEntry(new BuildingEntry(building, availableMaterials));
         }
     }
     
@@ -128,8 +125,6 @@ public class BuildingListWidget extends AlwaysSelectedEntryListWidget<BuildingLi
     
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        com.secretasain.settlements.SettlementsMod.LOGGER.info("BuildingListWidget.mouseClicked called: mouseX={}, mouseY={}, button={}, widget bounds: x={}, y={}, w={}, h={}", 
-            mouseX, mouseY, button, this.getRowLeft(), this.top, this.width, this.bottom - this.top);
         
         Building previouslySelected = this.getSelectedBuilding();
         boolean buttonWasClicked = false;
@@ -153,8 +148,6 @@ public class BuildingListWidget extends AlwaysSelectedEntryListWidget<BuildingLi
                         mouseY >= entryY && mouseY <= entryY + this.itemHeight) {
                         
                         clickedEntry = entry; // Remember which entry was clicked
-                        com.secretasain.settlements.SettlementsMod.LOGGER.info("Click detected on entry {} at ({}, {}), entry bounds: x={}, y={}, w={}, h={}, entryY={}", 
-                            entry.getBuilding().getId(), mouseX, mouseY, x, entryY, this.width, this.itemHeight, entryY);
                         break; // Found the entry, stop searching
                     }
                 }
@@ -177,7 +170,6 @@ public class BuildingListWidget extends AlwaysSelectedEntryListWidget<BuildingLi
                     // Check start button first (for RESERVED buildings)
                     if (clickedEntry.getBuilding().getStatus() == BuildingStatus.RESERVED && 
                         clickedEntry.isStartButtonClicked(mouseX, mouseY, x, entryY, this.width, this.itemHeight)) {
-                        com.secretasain.settlements.SettlementsMod.LOGGER.info("Start button clicked for building {}", clickedEntry.getBuilding().getId());
                         if (onStartCallback != null) {
                             onStartCallback.accept(clickedEntry.getBuilding());
                         }
@@ -185,36 +177,24 @@ public class BuildingListWidget extends AlwaysSelectedEntryListWidget<BuildingLi
                     }
                     // Check delete button
                     else if (clickedEntry.isDeleteButtonClicked(mouseX, mouseY, x, entryY, this.width, this.itemHeight)) {
-                        com.secretasain.settlements.SettlementsMod.LOGGER.info("Delete button clicked for building {}", clickedEntry.getBuilding().getId());
                         if (onDeleteCallback != null) {
                             onDeleteCallback.accept(clickedEntry.getBuilding());
                         }
                         buttonWasClicked = true;
                     }
-                    // If no button was clicked, we'll select the entry
-                    else {
-                        com.secretasain.settlements.SettlementsMod.LOGGER.info("Click on entry {} is not on a button, will select entry", clickedEntry.getBuilding().getId());
-                    }
                 }
-            } else {
-                com.secretasain.settlements.SettlementsMod.LOGGER.debug("No entry was clicked (mouseX={}, mouseY={}, widget bounds: x={}, y={}, w={}, h={})", 
-                    mouseX, mouseY, this.getRowLeft(), this.top, this.width, this.bottom - this.top);
             }
             
             // If an entry was clicked but no button, explicitly select it BEFORE calling parent
             // This ensures selection is set even if parent's mouseClicked doesn't handle it
             if (clickedEntry != null && !buttonWasClicked) {
-                com.secretasain.settlements.SettlementsMod.LOGGER.info("Selecting building entry: {} (clicked on entry area, not button)", 
-                    clickedEntry.getBuilding().getId());
                 this.setSelected(clickedEntry);
-                // Verify selection was set
-                BuildingEntry verifySelected = this.getSelectedOrNull();
-                if (verifySelected == clickedEntry) {
-                    com.secretasain.settlements.SettlementsMod.LOGGER.info("Selection verified: building {} is now selected", clickedEntry.getBuilding().getId());
-                } else {
-                    com.secretasain.settlements.SettlementsMod.LOGGER.warn("Selection failed! Expected {}, but got {}", 
-                        clickedEntry.getBuilding().getId(),
-                        verifySelected != null ? verifySelected.getBuilding().getId() : "null");
+                
+                // Manually trigger callback immediately after selection is set
+                // This ensures the material widget is created even if the normal callback doesn't fire
+                Building selectedBuilding = this.getSelectedBuilding();
+                if (selectedBuilding != null && onSelectionChangedCallback != null) {
+                    onSelectionChangedCallback.accept(selectedBuilding);
                 }
             }
         }
@@ -223,20 +203,18 @@ public class BuildingListWidget extends AlwaysSelectedEntryListWidget<BuildingLi
         // But if we already set it manually above, parent's call won't change it
         boolean result = super.mouseClicked(mouseX, mouseY, button);
         
-        // Notify if selection changed
+        // Notify if selection changed OR if same building was clicked again
         Building newlySelected = this.getSelectedBuilding();
         if (previouslySelected != newlySelected) {
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("Building selection changed from {} to {}", 
-                previouslySelected != null ? previouslySelected.getId() : "null",
-                newlySelected != null ? newlySelected.getId() : "null");
             if (onSelectionChangedCallback != null) {
                 onSelectionChangedCallback.accept(newlySelected);
             }
-        } else if (newlySelected != null) {
-            // Selection didn't change, but log current selection for debugging
-            com.secretasain.settlements.SettlementsMod.LOGGER.debug("Building selection unchanged: {}", newlySelected.getId());
-        } else {
-            com.secretasain.settlements.SettlementsMod.LOGGER.warn("No building is selected after mouse click!");
+        } else if (newlySelected != null && clickedEntry != null && clickedEntry.getBuilding() == newlySelected) {
+            // Selection didn't change, but same building was clicked - trigger callback anyway
+            // This ensures the material widget is updated/refreshed when clicking the same building
+            if (onSelectionChangedCallback != null) {
+                onSelectionChangedCallback.accept(newlySelected);
+            }
         }
         
         // If a button was clicked, we handled it, so return true

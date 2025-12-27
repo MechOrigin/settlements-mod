@@ -1,0 +1,201 @@
+{
+  "trades": [
+    {
+      "inputItem": "minecraft:melon",
+      "inputCount": 9,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 2,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "minecraft:pumpkin",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "minecraft:apple",
+      "inputCount": 9,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 16
+    },
+    {
+      "inputItem": "farmersdelight:carrot_crate",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farmersdelight:potato_crate",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farmersdelight:beetroot_crate",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farmersdelight:cabbage_crate",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farmersdelight:tomato_crate",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farmersdelight:onion_crate",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farmersdelight:rice_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farmersdelight:rice_bale",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 2,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farmersdelight:straw_bale",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "minecraft:hay_block",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farm_and_charm:lettuce_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farm_and_charm:strawberry_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farm_and_charm:tomato_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farm_and_charm:carrot_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farm_and_charm:potato_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farm_and_charm:onion_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farm_and_charm:beetroot_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farm_and_charm:corn_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farm_and_charm:flour_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farm_and_charm:oat_bale",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "farm_and_charm:barley_bale",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "vinery:white_grape_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "vinery:red_grape_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "herbalbrews:cherry_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    },
+    {
+      "inputItem": "herbalbrews:apple_bag",
+      "inputCount": 1,
+      "outputItem": "minecraft:emerald",
+      "outputCount": 1,
+      "maxUses": 12
+    }
+  ]
+}
+

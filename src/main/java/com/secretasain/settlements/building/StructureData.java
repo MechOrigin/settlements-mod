@@ -90,8 +90,10 @@ public class StructureData {
                     blocks.add(structureBlock);
                     buildOrder.add(relativePos);
                     
-                    // Count materials
-                    materialCount.put(state, materialCount.getOrDefault(state, 0) + 1);
+                    // Count materials (skip air blocks - they're not required materials)
+                    if (!state.isAir()) {
+                        materialCount.put(state, materialCount.getOrDefault(state, 0) + 1);
+                    }
                 }
             }
         }

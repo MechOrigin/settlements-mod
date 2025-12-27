@@ -73,7 +73,10 @@ public class Building {
             for (String key : requiredNbt.getKeys()) {
                 Identifier materialId = Identifier.tryParse(key);
                 if (materialId != null) {
-                    building.requiredMaterials.put(materialId, requiredNbt.getInt(key));
+                    // Skip air blocks - they're not required materials
+                    if (!"minecraft:air".equals(materialId.toString())) {
+                        building.requiredMaterials.put(materialId, requiredNbt.getInt(key));
+                    }
                 }
             }
         }
@@ -279,7 +282,16 @@ public class Building {
     }
     
     public Map<Identifier, Integer> getRequiredMaterials() {
-        return Collections.unmodifiableMap(requiredMaterials);
+        // Filter out air blocks - they're not required materials
+        Map<Identifier, Integer> filtered = new HashMap<>();
+        for (Map.Entry<Identifier, Integer> entry : requiredMaterials.entrySet()) {
+            Identifier materialId = entry.getKey();
+            // Skip air blocks
+            if (!"minecraft:air".equals(materialId.toString())) {
+                filtered.put(materialId, entry.getValue());
+            }
+        }
+        return Collections.unmodifiableMap(filtered);
     }
     
     public Map<Identifier, Integer> getProvidedMaterials() {

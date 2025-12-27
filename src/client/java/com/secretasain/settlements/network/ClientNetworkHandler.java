@@ -174,6 +174,121 @@ public class ClientNetworkHandler {
             }
         );
         
+        // Register building output data packet receiver
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.secretasain.settlements.network.BuildingOutputDataPacket.ID,
+            (client, handler, buf, responseSender) -> {
+                // CRITICAL: Read all data from buffer BEFORE deferring to client thread
+                // The buffer gets released after this handler returns, so we must read everything now
+                UUID buildingId = buf.readUuid();
+                boolean isFarm = buf.readBoolean();
+                
+                SettlementsMod.LOGGER.info("Received building output data packet: buildingId={}, isFarm={}", buildingId, isFarm);
+                
+                // Read all data based on type
+                java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> outputs = null;
+                int farmlandCount = -1;
+                java.util.List<com.secretasain.settlements.settlement.CropStatistics> cropStats = null;
+                
+                if (isFarm) {
+                    farmlandCount = buf.readInt();
+                    int cropStatsCount = buf.readInt();
+                    SettlementsMod.LOGGER.debug("Farm building data: farmlandCount={}, cropStatsCount={}", farmlandCount, cropStatsCount);
+                    
+                    if (cropStatsCount > 0) {
+                        cropStats = new java.util.ArrayList<>();
+                        for (int i = 0; i < cropStatsCount; i++) {
+                            String cropType = buf.readString();
+                            String cropItemIdStr = buf.readString();
+                            int totalCount = buf.readInt();
+                            int matureCount = buf.readInt();
+                            int immatureCount = buf.readInt();
+                            int averageAge = buf.readInt();
+                            int maxAge = buf.readInt();
+                            long estimatedTicksUntilHarvest = buf.readLong();
+                            double avgDropsPerCrop = buf.readDouble();
+                            
+                            // Read age distribution
+                            int ageDistSize = buf.readInt();
+                            java.util.Map<Integer, Integer> ageDistribution = new java.util.HashMap<>();
+                            for (int j = 0; j < ageDistSize; j++) {
+                                int age = buf.readInt();
+                                int count = buf.readInt();
+                                ageDistribution.put(age, count);
+                            }
+                            
+                            net.minecraft.util.Identifier cropItemId = net.minecraft.util.Identifier.tryParse(cropItemIdStr);
+                            if (cropItemId == null) {
+                                SettlementsMod.LOGGER.warn("Invalid crop item ID: {}", cropItemIdStr);
+                                continue;
+                            }
+                            
+                            com.secretasain.settlements.settlement.CropStatistics stats = 
+                                new com.secretasain.settlements.settlement.CropStatistics(
+                                    cropType, cropItemId, totalCount, matureCount, immatureCount,
+                                    ageDistribution, averageAge, maxAge, estimatedTicksUntilHarvest, avgDropsPerCrop
+                                );
+                            cropStats.add(stats);
+                            SettlementsMod.LOGGER.debug("Added crop stats: type={}, total={}, mature={}, immature={}", 
+                                cropType, totalCount, matureCount, immatureCount);
+                        }
+                        SettlementsMod.LOGGER.debug("Parsed {} crop statistics", cropStats.size());
+                    }
+                } else {
+                    int outputCount = buf.readInt();
+                    SettlementsMod.LOGGER.debug("Non-farm building data: outputCount={}", outputCount);
+                    outputs = new java.util.ArrayList<>();
+                    for (int i = 0; i < outputCount; i++) {
+                        String itemId = buf.readString();
+                        int weight = buf.readInt();
+                        int minCount = buf.readInt();
+                        int maxCount = buf.readInt();
+                        
+                        net.minecraft.util.Identifier itemIdentifier = net.minecraft.util.Identifier.tryParse(itemId);
+                        if (itemIdentifier != null) {
+                            net.minecraft.item.Item item = net.minecraft.registry.Registries.ITEM.get(itemIdentifier);
+                            if (item != null) {
+                                outputs.add(new com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry(
+                                    item, weight, minCount, maxCount));
+                                SettlementsMod.LOGGER.debug("Added output entry: item={}, weight={}, count={}-{}", 
+                                    itemId, weight, minCount, maxCount);
+                            } else {
+                                SettlementsMod.LOGGER.warn("Item not found in registry: {}", itemId);
+                            }
+                        } else {
+                            SettlementsMod.LOGGER.warn("Invalid item identifier: {}", itemId);
+                        }
+                    }
+                    SettlementsMod.LOGGER.debug("Parsed {} output entries", outputs.size());
+                }
+                
+                // Capture final variables for lambda
+                final UUID finalBuildingId = buildingId;
+                final java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> finalOutputs = outputs;
+                final int finalFarmlandCount = farmlandCount;
+                final java.util.List<com.secretasain.settlements.settlement.CropStatistics> finalCropStats = cropStats;
+                final boolean finalIsFarm = isFarm;
+                
+                // Now defer to client thread with already-read data
+                client.execute(() -> {
+                    // Update the BuildingOutputWidget with received data
+                    if (client.currentScreen instanceof SettlementScreen) {
+                        SettlementScreen screen = (SettlementScreen) client.currentScreen;
+                        if (finalIsFarm) {
+                            SettlementsMod.LOGGER.debug("Updating farm building output data: buildingId={}, farmlandCount={}, cropStats={}", 
+                                finalBuildingId, finalFarmlandCount, finalCropStats != null ? finalCropStats.size() : 0);
+                            screen.updateBuildingOutputData(finalBuildingId, null, finalFarmlandCount, finalCropStats);
+                        } else {
+                            SettlementsMod.LOGGER.debug("Updating non-farm building output data: buildingId={}, outputCount={}", 
+                                finalBuildingId, finalOutputs != null ? finalOutputs.size() : 0);
+                            screen.updateBuildingOutputData(finalBuildingId, finalOutputs, -1, null);
+                        }
+                    } else {
+                        SettlementsMod.LOGGER.warn("Received building output data but no SettlementScreen is open");
+                    }
+                });
+            });
+        
         SettlementsMod.LOGGER.info("Client network handler registered successfully");
     }
     
