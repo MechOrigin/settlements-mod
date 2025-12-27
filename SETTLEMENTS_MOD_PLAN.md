@@ -832,10 +832,17 @@ manager.clearAll();
   - [x] Wire up network packet communication
   - [x] Add visual feedback and error messages
 - [ ] Implement villager pathfinding to workstations (TODO: Phase 4.3 advanced feature)
-- [ ] Add automated task execution (smithing, farming, trading) (TODO: Phase 4.3 advanced feature)
-- [ ] Create work schedule system (day/night cycles) (TODO: Phase 4.3 advanced feature)
+- [x] Add automated task execution (smithing, farming, trading) ✅
+- [x] Create work schedule system (day/night cycles) ✅
 - [ ] Implement productivity tracking (TODO: Phase 4.3 advanced feature)
-- [ ] Add work output collection system (TODO: Phase 4.3 advanced feature)
+- [x] Add work output collection system (NEW APPROACH: Villager inventory accumulation + lectern deposit) ✅
+  - [x] Create JSON config system for building outputs (configurable per building type)
+  - [x] Villagers accumulate items in inventory (up to 32 items)
+  - [x] When inventory reaches 32 items, villager walks to lectern
+  - [x] Temporarily disable auto-rally during deposit trips
+  - [x] Deposit items into nearby chests automatically
+  - [x] Re-enable auto-rally after deposit
+  - [x] Wall assignments produce: flowers (40%), bones (20%), feathers (30%), seeds (10%)
 
 ### 4.4 Settlement Expansion
 **Goal**: Add progression and expansion mechanics

@@ -17,6 +17,8 @@ public class VillagerData {
     private String name;
     private long lastSeen;
     private UUID assignedBuildingId; // Building this villager is assigned to work at (null if unassigned)
+    private java.util.Map<String, Integer> accumulatedItems; // Items accumulated for deposit (item ID -> count)
+    private boolean isDepositing; // Whether villager is currently on a deposit trip
 
     public VillagerData(UUID entityId, BlockPos lastKnownPos, String profession, boolean isEmployed, String name) {
         this.entityId = entityId;
@@ -26,6 +28,8 @@ public class VillagerData {
         this.name = name;
         this.lastSeen = System.currentTimeMillis();
         this.assignedBuildingId = null;
+        this.accumulatedItems = new java.util.HashMap<>();
+        this.isDepositing = false;
     }
 
     public UUID getEntityId() {
@@ -80,6 +84,30 @@ public class VillagerData {
     public boolean isAssigned() {
         return assignedBuildingId != null;
     }
+    
+    public java.util.Map<String, Integer> getAccumulatedItems() {
+        return accumulatedItems;
+    }
+    
+    public void addAccumulatedItem(String itemId, int count) {
+        accumulatedItems.put(itemId, accumulatedItems.getOrDefault(itemId, 0) + count);
+    }
+    
+    public int getTotalAccumulatedItems() {
+        return accumulatedItems.values().stream().mapToInt(Integer::intValue).sum();
+    }
+    
+    public void clearAccumulatedItems() {
+        accumulatedItems.clear();
+    }
+    
+    public boolean isDepositing() {
+        return isDepositing;
+    }
+    
+    public void setDepositing(boolean depositing) {
+        isDepositing = depositing;
+    }
 
     /**
      * Serializes this villager data to NBT.
@@ -98,6 +126,15 @@ public class VillagerData {
         if (assignedBuildingId != null) {
             nbt.putUuid("assignedBuildingId", assignedBuildingId);
         }
+        
+        // Save accumulated items
+        net.minecraft.nbt.NbtCompound itemsNbt = new net.minecraft.nbt.NbtCompound();
+        for (java.util.Map.Entry<String, Integer> entry : accumulatedItems.entrySet()) {
+            itemsNbt.putInt(entry.getKey(), entry.getValue());
+        }
+        nbt.put("accumulatedItems", itemsNbt);
+        nbt.putBoolean("isDepositing", isDepositing);
+        
         return nbt;
     }
 
@@ -118,6 +155,16 @@ public class VillagerData {
         VillagerData data = new VillagerData(entityId, lastKnownPos, profession, isEmployed, name);
         data.lastSeen = lastSeen;
         data.assignedBuildingId = assignedBuildingId;
+        
+        // Load accumulated items
+        if (nbt.contains("accumulatedItems", 10)) {
+            net.minecraft.nbt.NbtCompound itemsNbt = nbt.getCompound("accumulatedItems");
+            for (String key : itemsNbt.getKeys()) {
+                data.accumulatedItems.put(key, itemsNbt.getInt(key));
+            }
+        }
+        data.isDepositing = nbt.contains("isDepositing") ? nbt.getBoolean("isDepositing") : false;
+        
         return data;
     }
 

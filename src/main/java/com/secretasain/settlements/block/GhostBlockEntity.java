@@ -23,8 +23,8 @@ public class GhostBlockEntity extends BlockEntity {
     
     public void setRepresentedBlock(BlockState blockState) {
         Identifier blockId = blockState != null ? Registries.BLOCK.getId(blockState.getBlock()) : null;
-        com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.setRepresentedBlock: Setting represented block {} at {} (isClient={}, was null={})", 
-            blockId, this.pos, this.world != null && this.world.isClient, this.representedBlock == null);
+        // com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.setRepresentedBlock: Setting represented block {} at {} (isClient={}, was null={})", 
+        //     blockId, this.pos, this.world != null && this.world.isClient, this.representedBlock == null);
         
         this.representedBlock = blockState;
         this.markDirty();
@@ -39,7 +39,7 @@ public class GhostBlockEntity extends BlockEntity {
             if (this.world instanceof net.minecraft.server.world.ServerWorld) {
                 net.minecraft.server.world.ServerWorld serverWorld = (net.minecraft.server.world.ServerWorld) this.world;
                 serverWorld.getChunkManager().markForUpdate(this.pos);
-                com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.setRepresentedBlock: Marked chunk for update at {}", this.pos);
+                // com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.setRepresentedBlock: Marked chunk for update at {}", this.pos);
             }
         }
         // On client, just mark dirty - the rendering system will pick it up
@@ -50,22 +50,22 @@ public class GhostBlockEntity extends BlockEntity {
         super.readNbt(nbt);
         
         // DEBUG: Log all NBT keys to see what we're receiving
-        com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.readNbt: Reading NBT at {} (isClient={}), NBT keys: {}", 
-            this.pos, this.world != null && this.world.isClient, nbt.getKeys());
+        // com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.readNbt: Reading NBT at {} (isClient={}), NBT keys: {}", 
+        //     this.pos, this.world != null && this.world.isClient, nbt.getKeys());
         
         // CRITICAL: Check for both "RepresentedBlock" (capital R) and "representedBlock" (lowercase r) for compatibility
         String blockIdString = null;
         if (nbt.contains("RepresentedBlock", 8)) { // 8 = String
             blockIdString = nbt.getString("RepresentedBlock");
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.readNbt: Found 'RepresentedBlock' key with value '{}' at {}", 
-                blockIdString, this.pos);
+            // com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.readNbt: Found 'RepresentedBlock' key with value '{}' at {}", 
+            //     blockIdString, this.pos);
         } else if (nbt.contains("representedBlock", 10)) { // 10 = Compound (old format)
             // Handle old format where it was stored as a compound with "Name" key
             NbtCompound representedBlockNbt = nbt.getCompound("representedBlock");
             if (representedBlockNbt.contains("Name", 8)) {
                 blockIdString = representedBlockNbt.getString("Name");
-                com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.readNbt: Found old format 'representedBlock' compound with Name '{}' at {}", 
-                    blockIdString, this.pos);
+                // com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.readNbt: Found old format 'representedBlock' compound with Name '{}' at {}", 
+                //     blockIdString, this.pos);
             }
         }
         
@@ -74,16 +74,16 @@ public class GhostBlockEntity extends BlockEntity {
             if (id != null) {
                 representedBlock = Registries.BLOCK.get(id).getDefaultState();
                 // DEBUG: Log when we read the represented block from NBT
-                com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.readNbt: Successfully read represented block {} from NBT at {} (isClient={})", 
-                    blockIdString, this.pos, this.world != null && this.world.isClient);
+                // com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.readNbt: Successfully read represented block {} from NBT at {} (isClient={})", 
+                //     blockIdString, this.pos, this.world != null && this.world.isClient);
             } else {
-                com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockEntity.readNbt: Failed to parse block ID '{}' from NBT at {}", 
-                    blockIdString, this.pos);
+                // com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockEntity.readNbt: Failed to parse block ID '{}' from NBT at {}", 
+                //     blockIdString, this.pos);
             }
         } else {
             // DEBUG: Warn if NBT doesn't contain represented block
-            com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockEntity.readNbt: NBT does not contain 'RepresentedBlock' or 'representedBlock' at {} (isClient={}). NBT keys: {}", 
-                this.pos, this.world != null && this.world.isClient, nbt.getKeys());
+            // com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockEntity.readNbt: NBT does not contain 'RepresentedBlock' or 'representedBlock' at {} (isClient={}). NBT keys: {}", 
+            //     this.pos, this.world != null && this.world.isClient, nbt.getKeys());
             // CRITICAL: Try to fix existing ghost blocks by looking them up in building data
             if (this.world != null && !this.world.isClient) {
                 // Schedule a fix attempt for the next tick (after world is fully loaded)
@@ -158,11 +158,11 @@ public class GhostBlockEntity extends BlockEntity {
         if (representedBlock != null) {
             Identifier blockId = Registries.BLOCK.getId(representedBlock.getBlock());
             nbt.putString("RepresentedBlock", blockId.toString());
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.writeNbt: Writing represented block {} to NBT at {} (isClient={})", 
-                blockId, this.pos, this.world != null && this.world.isClient);
+            // com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.writeNbt: Writing represented block {} to NBT at {} (isClient={})", 
+            //     blockId, this.pos, this.world != null && this.world.isClient);
         } else {
-            com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockEntity.writeNbt: Writing NBT but represented block is null at {} (isClient={})", 
-                this.pos, this.world != null && this.world.isClient);
+            // com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockEntity.writeNbt: Writing NBT but represented block is null at {} (isClient={})", 
+            //     this.pos, this.world != null && this.world.isClient);
         }
     }
     
@@ -176,11 +176,11 @@ public class GhostBlockEntity extends BlockEntity {
         if (representedBlock != null) {
             Identifier blockId = Registries.BLOCK.getId(representedBlock.getBlock());
             nbt.putString("RepresentedBlock", blockId.toString());
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.toInitialChunkDataNbt: Writing represented block {} to initial chunk data at {} (isClient={})", 
-                blockId, this.pos, this.world != null && this.world.isClient);
+            // com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockEntity.toInitialChunkDataNbt: Writing represented block {} to initial chunk data at {} (isClient={})", 
+            //     blockId, this.pos, this.world != null && this.world.isClient);
         } else {
-            com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockEntity.toInitialChunkDataNbt: Writing initial chunk data but represented block is null at {} (isClient={}). This means client will receive null represented block!", 
-                this.pos, this.world != null && this.world.isClient);
+            // com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockEntity.toInitialChunkDataNbt: Writing initial chunk data but represented block is null at {} (isClient={}). This means client will receive null represented block!", 
+            //     this.pos, this.world != null && this.world.isClient);
         }
         return nbt;
     }

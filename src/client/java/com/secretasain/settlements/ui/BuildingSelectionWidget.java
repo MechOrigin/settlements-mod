@@ -19,6 +19,7 @@ import java.util.function.BiConsumer;
 public class BuildingSelectionWidget extends AlwaysSelectedEntryListWidget<BuildingSelectionWidget.BuildingEntry> {
     private final List<Building> availableBuildings;
     private final VillagerData villager;
+    private final com.secretasain.settlements.settlement.Settlement settlement;
     private BiConsumer<VillagerData, UUID> onBuildingSelected;
     
     public VillagerData getVillager() {
@@ -26,10 +27,12 @@ public class BuildingSelectionWidget extends AlwaysSelectedEntryListWidget<Build
     }
     
     public BuildingSelectionWidget(MinecraftClient client, int width, int height, int top, int bottom, 
-                                  int itemHeight, List<Building> availableBuildings, VillagerData villager) {
+                                  int itemHeight, List<Building> availableBuildings, VillagerData villager,
+                                  com.secretasain.settlements.settlement.Settlement settlement) {
         super(client, width, height, top, bottom, itemHeight);
         this.availableBuildings = availableBuildings;
         this.villager = villager;
+        this.settlement = settlement;
         this.updateEntries();
     }
     
@@ -51,12 +54,79 @@ public class BuildingSelectionWidget extends AlwaysSelectedEntryListWidget<Build
     }
     
     @Override
+    public void render(net.minecraft.client.gui.DrawContext context, int mouseX, int mouseY, float delta) {
+        // Draw custom background matching the dialog style (no dirt texture)
+        int x = this.getRowLeft();
+        int y = this.top;
+        int width = this.width;
+        int height = this.bottom - this.top;
+        
+        // Draw background for the list area - matches dialog style
+        context.fill(x, y, x + width, y + height, 0xFF101010); // Dark gray background
+        
+        // Render entries manually WITHOUT calling super.render() to avoid parent's background
+        int scrollAmount = (int)this.getScrollAmount();
+        int startIndex = Math.max(0, scrollAmount / this.itemHeight);
+        int endIndex = Math.min(this.children().size(), startIndex + (height / this.itemHeight) + 2);
+        
+        for (int i = startIndex; i < endIndex && i < this.children().size(); i++) {
+            BuildingEntry entry = this.children().get(i);
+            int entryY = y + (i * this.itemHeight) - scrollAmount;
+            
+            if (entryY + this.itemHeight >= y && entryY <= y + height) {
+                boolean isSelected = this.getSelectedOrNull() == entry;
+                boolean isHovered = mouseX >= x && mouseX <= x + width && 
+                                   mouseY >= entryY && mouseY <= entryY + this.itemHeight;
+                entry.render(context, i, entryY, x, width, this.itemHeight, mouseX, mouseY, isSelected || isHovered, delta);
+            }
+        }
+        
+        // Render scrollbar if needed
+        int maxScroll = this.getMaxScroll();
+        if (maxScroll > 0) {
+            int scrollbarWidth = 4;
+            int scrollbarPadding = 2;
+            int scrollbarX = x + width - scrollbarWidth - scrollbarPadding;
+            int scrollbarHeight = Math.max(4, (int)((height / (float)(maxScroll + height)) * height));
+            int scrollbarY = y + (int)((scrollAmount / (float)maxScroll) * (height - scrollbarHeight));
+            scrollbarY = Math.max(y, Math.min(scrollbarY, y + height - scrollbarHeight));
+            context.fill(scrollbarX, scrollbarY, scrollbarX + scrollbarWidth, scrollbarY + scrollbarHeight, 0x80FFFFFF);
+        }
+    }
+    
+    @Override
+    protected void renderBackground(net.minecraft.client.gui.DrawContext context) {
+        // Override to completely prevent default background rendering (which includes dirt texture)
+        // Do NOT call super.renderBackground() - this prevents the dirt texture from showing
+        // We draw our own background in render() method instead that matches the dialog style
+    }
+    
+    @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) { // Left click
-            BuildingEntry selected = this.getSelectedOrNull();
-            if (selected != null && onBuildingSelected != null) {
-                onBuildingSelected.accept(villager, selected.getBuilding().getId());
-                return true;
+            int x = this.getRowLeft();
+            int y = this.top;
+            int scrollAmount = (int)this.getScrollAmount();
+            
+            // Find which entry was clicked
+            for (int i = 0; i < this.children().size(); i++) {
+                BuildingEntry entry = this.children().get(i);
+                int entryY = y + (i * this.itemHeight) - scrollAmount;
+                
+                if (entryY + this.itemHeight >= y && entryY <= y + (this.bottom - this.top)) {
+                    if (mouseX >= x && mouseX <= x + this.width && 
+                        mouseY >= entryY && mouseY <= entryY + this.itemHeight) {
+                        
+                        // Select the entry
+                        this.setSelected(entry);
+                        
+                        // Trigger callback immediately on click (only if villager is set)
+                        if (onBuildingSelected != null && villager != null) {
+                            onBuildingSelected.accept(villager, entry.getBuilding().getId());
+                        }
+                        return true;
+                    }
+                }
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
@@ -65,7 +135,7 @@ public class BuildingSelectionWidget extends AlwaysSelectedEntryListWidget<Build
     /**
      * A single entry in the building selection list.
      */
-    public static class BuildingEntry extends AlwaysSelectedEntryListWidget.Entry<BuildingEntry> {
+    public class BuildingEntry extends AlwaysSelectedEntryListWidget.Entry<BuildingEntry> {
         private final Building building;
         
         public BuildingEntry(Building building) {
@@ -123,6 +193,24 @@ public class BuildingSelectionWidget extends AlwaysSelectedEntryListWidget<Build
                 0xCCCCCC,
                 false
             );
+            
+            // Draw capacity info if settlement is available
+            if (settlement != null) {
+                int capacity = com.secretasain.settlements.settlement.BuildingCapacity.getCapacity(building.getStructureType());
+                int assigned = com.secretasain.settlements.settlement.WorkAssignmentManager.getVillagersAssignedToBuilding(settlement, building.getId()).size();
+                int available = capacity - assigned;
+                
+                String capacityText = String.format("%d/%d", assigned, capacity);
+                int capacityColor = available > 0 ? 0x00FF00 : 0xFF0000; // Green if has space, red if full
+                context.drawText(
+                    MinecraftClient.getInstance().textRenderer,
+                    Text.literal(capacityText),
+                    x + entryWidth - 40,
+                    y + 13,
+                    capacityColor,
+                    false
+                );
+            }
         }
         
         @Override

@@ -62,6 +62,7 @@
   "settlements.ui.villagers.unassigned": "No assignment",
   "settlements.ui.villagers.assign_work": "Assign Work",
   "settlements.ui.villagers.unassign_work": "Unassign",
+  "settlements.ui.villagers.buildings": "Buildings",
   
   "settlements.work.assigned": "Villager assigned to building",
   "settlements.work.unassigned": "Villager unassigned from building",
@@ -69,6 +70,7 @@
   "settlements.work.unassignment_failed": "Failed to unassign villager",
   "settlements.work.settlement_not_found": "Settlement not found",
   "settlements.work.no_buildings_available": "No completed buildings available for assignment",
+  "settlements.work.building_full": "Building is full! Capacity: %d, Assigned: %d",
   "settlements.ui.work.select_building": "Select Building for %s",
   "settlements.ui.work.press_esc": "Press ESC to cancel",
   

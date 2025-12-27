@@ -82,30 +82,41 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget<VillagerLi
         // Draw border matching main window style (0xFF404040)
         context.drawBorder(x - 5, y - 5, width + 10, height + 10, 0xFF404040);
         
-        // Render entries manually WITHOUT calling super.render() to avoid parent's background
-        int scrollAmount = (int)this.getScrollAmount();
-        int startIndex = Math.max(0, scrollAmount / this.itemHeight);
-        int endIndex = Math.min(this.children().size(), startIndex + (height / this.itemHeight) + 2);
+        // Enable scissor clipping to constrain rendering within widget bounds
+        context.enableScissor(x, y, x + width, y + height);
         
-        for (int i = startIndex; i < endIndex && i < this.children().size(); i++) {
-            VillagerEntry entry = this.children().get(i);
-            int entryY = y + (i * this.itemHeight) - scrollAmount;
+        try {
+            // Render entries manually WITHOUT calling super.render() to avoid parent's background
+            int scrollAmount = (int)this.getScrollAmount();
+            int startIndex = Math.max(0, scrollAmount / this.itemHeight);
+            int endIndex = Math.min(this.children().size(), startIndex + (height / this.itemHeight) + 2);
             
-            if (entryY + this.itemHeight >= y && entryY <= y + height) {
-                boolean isSelected = this.getSelectedOrNull() == entry;
-                boolean isHovered = mouseX >= x && mouseX <= x + width && 
-                                   mouseY >= entryY && mouseY <= entryY + this.itemHeight;
-                entry.render(context, i, entryY, x, width, this.itemHeight, mouseX, mouseY, isSelected || isHovered, delta);
+            for (int i = startIndex; i < endIndex && i < this.children().size(); i++) {
+                VillagerEntry entry = this.children().get(i);
+                int entryY = y + (i * this.itemHeight) - scrollAmount;
+                
+                // Only render if entry is within visible bounds
+                if (entryY + this.itemHeight >= y && entryY <= y + height) {
+                    boolean isSelected = this.getSelectedOrNull() == entry;
+                    boolean isHovered = mouseX >= x && mouseX <= x + width && 
+                                       mouseY >= entryY && mouseY <= entryY + this.itemHeight;
+                    entry.render(context, i, entryY, x, width, this.itemHeight, mouseX, mouseY, isSelected || isHovered, delta);
+                }
             }
-        }
-        
-        // Render scrollbar if needed
-        int maxScroll = this.getMaxScroll();
-        if (maxScroll > 0) {
-            int scrollbarX = x + width - 6;
-            int scrollbarHeight = Math.max(4, (int)((height / (float)(maxScroll + height)) * height));
-            int scrollbarY = y + (int)((scrollAmount / (float)maxScroll) * (height - scrollbarHeight));
-            context.fill(scrollbarX, scrollbarY, scrollbarX + 4, scrollbarY + scrollbarHeight, 0x80FFFFFF);
+            
+            // Render scrollbar if needed (inside scissor area)
+            int maxScroll = this.getMaxScroll();
+            if (maxScroll > 0) {
+                int scrollbarX = x + width - 6;
+                int scrollbarHeight = Math.max(4, (int)((height / (float)(maxScroll + height)) * height));
+                int scrollbarY = y + (int)((scrollAmount / (float)maxScroll) * (height - scrollbarHeight));
+                // Clamp scrollbar to widget bounds
+                scrollbarY = Math.max(y, Math.min(scrollbarY, y + height - scrollbarHeight));
+                context.fill(scrollbarX, scrollbarY, scrollbarX + 4, scrollbarY + scrollbarHeight, 0x80FFFFFF);
+            }
+        } finally {
+            // Always disable scissor to prevent affecting other rendering
+            context.disableScissor();
         }
     }
     
@@ -410,7 +421,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget<VillagerLi
             if (!villager.isEmployed()) return false;
             int buttonWidth = 50;
             int buttonHeight = 14;
-            int buttonY = y + (entryHeight - buttonHeight) / 2;
+            int buttonY = y + entryHeight - buttonHeight - 3; // Match button position in render()
             int buttonX = x + entryWidth - buttonWidth - 5;
             return mouseX >= buttonX && mouseX <= buttonX + buttonWidth &&
                    mouseY >= buttonY && mouseY <= buttonY + buttonHeight;

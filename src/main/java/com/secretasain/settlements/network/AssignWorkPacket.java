@@ -1,6 +1,7 @@
 package com.secretasain.settlements.network;
 
 import com.secretasain.settlements.SettlementsMod;
+import com.secretasain.settlements.settlement.Building;
 import com.secretasain.settlements.settlement.Settlement;
 import com.secretasain.settlements.settlement.SettlementManager;
 import com.secretasain.settlements.settlement.WorkAssignmentManager;
@@ -40,17 +41,51 @@ public class AssignWorkPacket {
                     
                     if (assign) {
                         // Assign villager to building
-                        if (WorkAssignmentManager.assignVillagerToBuilding(settlement, villagerId, buildingId)) {
+                        // Check capacity first to provide better error messages
+                        if (!com.secretasain.settlements.settlement.BuildingCapacity.canAcceptMoreVillagers(settlement, buildingId)) {
+                            Building building = settlement.getBuildings().stream()
+                                .filter(b -> b.getId().equals(buildingId))
+                                .findFirst()
+                                .orElse(null);
+                            if (building != null) {
+                                int capacity = com.secretasain.settlements.settlement.BuildingCapacity.getCapacity(building.getStructureType());
+                                int assigned = com.secretasain.settlements.settlement.WorkAssignmentManager.getVillagersAssignedToBuilding(settlement, buildingId).size();
+                                player.sendMessage(Text.translatable("settlements.work.building_full", capacity, assigned), false);
+                            } else {
+                                player.sendMessage(Text.translatable("settlements.work.assignment_failed"), false);
+                            }
+                        } else if (WorkAssignmentManager.assignVillagerToBuilding(settlement, villagerId, buildingId)) {
                             player.sendMessage(Text.translatable("settlements.work.assigned"), false);
                             manager.markDirty();
+                            // Send settlement data sync to client so UI updates assignment counts
+                            Building building = settlement.getBuildings().stream()
+                                .filter(b -> b.getId().equals(buildingId))
+                                .findFirst()
+                                .orElse(null);
+                            if (building != null) {
+                                SyncBuildingStatusPacket.sendToPlayer(player, settlement, building);
+                            }
                         } else {
                             player.sendMessage(Text.translatable("settlements.work.assignment_failed"), false);
                         }
                     } else {
-                        // Unassign villager
+                        // Unassign villager - find building BEFORE unassigning so we can send sync
+                        Building affectedBuilding = null;
+                        for (Building b : settlement.getBuildings()) {
+                            var assigned = WorkAssignmentManager.getVillagersAssignedToBuilding(settlement, b.getId());
+                            if (assigned.stream().anyMatch(v -> v.getEntityId().equals(villagerId))) {
+                                affectedBuilding = b;
+                                break;
+                            }
+                        }
+                        
                         if (WorkAssignmentManager.unassignVillager(settlement, villagerId)) {
                             player.sendMessage(Text.translatable("settlements.work.unassigned"), false);
                             manager.markDirty();
+                            // Send sync to update UI assignment counts
+                            if (affectedBuilding != null) {
+                                SyncBuildingStatusPacket.sendToPlayer(player, settlement, affectedBuilding);
+                            }
                         } else {
                             player.sendMessage(Text.translatable("settlements.work.unassignment_failed"), false);
                         }

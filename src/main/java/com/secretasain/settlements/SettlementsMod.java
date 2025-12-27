@@ -1,6 +1,7 @@
 package com.secretasain.settlements;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +28,15 @@ public class SettlementsMod implements ModInitializer {
 		// Register villager scanning system
 		com.secretasain.settlements.settlement.VillagerScanningSystem.register();
 		
+		// Register villager pathfinding system
+		com.secretasain.settlements.settlement.VillagerPathfindingSystem.register();
+		
+		// Register task execution system
+		com.secretasain.settlements.settlement.TaskExecutionSystem.register();
+		
+		// Register villager deposit system
+		com.secretasain.settlements.settlement.VillagerDepositSystem.register();
+		
 		// Register villager death/despawn event handlers
 		com.secretasain.settlements.settlement.VillagerEventHandlers.register();
 		
@@ -42,5 +52,10 @@ public class SettlementsMod implements ModInitializer {
 		com.secretasain.settlements.network.UnloadInventoryPacket.register();
 		com.secretasain.settlements.network.HireFireVillagerPacket.register();
 		com.secretasain.settlements.network.AssignWorkPacket.register();
+		
+		// Load building output config when server starts
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			com.secretasain.settlements.settlement.BuildingOutputConfig.load(server.getResourceManager());
+		});
 	}
 }

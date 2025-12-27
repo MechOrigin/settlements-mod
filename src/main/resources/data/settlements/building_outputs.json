@@ -1,0 +1,213 @@
+{
+  "building_outputs": {
+    "wall": {
+      "outputs": [
+        {
+          "item": "minecraft:dandelion",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 3
+        },
+        {
+          "item": "minecraft:poppy",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 3
+        },
+        {
+          "item": "minecraft:blue_orchid",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:allium",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:azure_bluet",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 3
+        },
+        {
+          "item": "minecraft:red_tulip",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:orange_tulip",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:white_tulip",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:pink_tulip",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:oxeye_daisy",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 3
+        },
+        {
+          "item": "minecraft:cornflower",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:lily_of_the_valley",
+          "weight": 4,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:bone",
+          "weight": 2,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:feather",
+          "weight": 3,
+          "min_count": 1,
+          "max_count": 3
+        },
+        {
+          "item": "minecraft:wheat_seeds",
+          "weight": 1,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:beetroot_seeds",
+          "weight": 1,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:pumpkin_seeds",
+          "weight": 1,
+          "min_count": 1,
+          "max_count": 2
+        },
+        {
+          "item": "minecraft:melon_seeds",
+          "weight": 1,
+          "min_count": 1,
+          "max_count": 2
+        }
+      ]
+    },
+    "smithing": {
+      "outputs": [
+        {
+          "item": "minecraft:iron_pickaxe",
+          "weight": 3,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item": "minecraft:iron_axe",
+          "weight": 3,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item": "minecraft:iron_shovel",
+          "weight": 3,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item": "minecraft:iron_hoe",
+          "weight": 3,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item": "minecraft:iron_ingot",
+          "weight": 2,
+          "min_count": 1,
+          "max_count": 2
+        }
+      ]
+    },
+    "farm": {
+      "outputs": [
+        {
+          "item": "minecraft:wheat",
+          "weight": 5,
+          "min_count": 2,
+          "max_count": 5
+        },
+        {
+          "item": "minecraft:carrot",
+          "weight": 5,
+          "min_count": 2,
+          "max_count": 5
+        },
+        {
+          "item": "minecraft:potato",
+          "weight": 5,
+          "min_count": 2,
+          "max_count": 5
+        },
+        {
+          "item": "minecraft:beetroot",
+          "weight": 5,
+          "min_count": 2,
+          "max_count": 5
+        },
+        {
+          "item": "minecraft:wheat_seeds",
+          "weight": 2,
+          "min_count": 1,
+          "max_count": 3
+        },
+        {
+          "item": "minecraft:beetroot_seeds",
+          "weight": 2,
+          "min_count": 1,
+          "max_count": 3
+        }
+      ]
+    },
+    "cartographer": {
+      "outputs": [
+        {
+          "item": "minecraft:paper",
+          "weight": 4,
+          "min_count": 2,
+          "max_count": 4
+        },
+        {
+          "item": "minecraft:map",
+          "weight": 2,
+          "min_count": 1,
+          "max_count": 1
+        },
+        {
+          "item": "minecraft:book",
+          "weight": 1,
+          "min_count": 1,
+          "max_count": 1
+        }
+      ]
+    }
+  }
+}
+

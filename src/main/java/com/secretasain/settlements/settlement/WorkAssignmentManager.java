@@ -57,6 +57,12 @@ public class WorkAssignmentManager {
             return false;
         }
         
+        // Check building capacity before assigning
+        if (!BuildingCapacity.canAcceptMoreVillagers(settlement, buildingId)) {
+            SettlementsMod.LOGGER.warn("Cannot assign villager: building {} is at capacity", buildingId);
+            return false;
+        }
+        
         // Unassign villager from previous building if assigned
         if (villager.isAssigned()) {
             unassignVillager(settlement, villagerId);

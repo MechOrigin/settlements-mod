@@ -31,14 +31,14 @@ public class GhostBlockRenderer implements BlockEntityRenderer<GhostBlockEntity>
         
         // Debug logging to check if block entity has data
         if (representedBlock == null || representedBlock.isAir()) {
-            com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockRenderer: Block entity at {} has no represented block or is air (representedBlock: {})", 
-                entity.getPos(), representedBlock);
+            // com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockRenderer: Block entity at {} has no represented block or is air (representedBlock: {})", 
+            //     entity.getPos(), representedBlock);
             return;
         }
         
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.world == null) {
-            com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockRenderer: Client or world is null at {}", entity.getPos());
+            // com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockRenderer: Client or world is null at {}", entity.getPos());
             return;
         }
         
@@ -58,10 +58,10 @@ public class GhostBlockRenderer implements BlockEntityRenderer<GhostBlockEntity>
         int combinedLight = LightmapTextureManager.pack(blockLight, skyLight);
         
         // DEBUG: Log that we're rendering
-        if (com.secretasain.settlements.SettlementsMod.LOGGER.isInfoEnabled() && Math.random() < 0.1) {
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockRenderer: Rendering ghost block at {} with represented block {}", 
-                pos, net.minecraft.registry.Registries.BLOCK.getId(representedBlock.getBlock()));
-        }
+        // if (com.secretasain.settlements.SettlementsMod.LOGGER.isInfoEnabled() && Math.random() < 0.1) {
+        //     com.secretasain.settlements.SettlementsMod.LOGGER.info("GhostBlockRenderer: Rendering ghost block at {} with represented block {}", 
+        //         pos, net.minecraft.registry.Registries.BLOCK.getId(representedBlock.getBlock()));
+        // }
         
         // Use the GhostBlockRendererUtility for consistent rendering
         // CRITICAL: In BlockEntityRenderer, matrices are ALREADY at the block position (0,0,0 relative to block)
@@ -77,9 +77,9 @@ public class GhostBlockRenderer implements BlockEntityRenderer<GhostBlockEntity>
             true
         );
         
-        if (!success) {
-            com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockRenderer: Failed to render ghost block at {}", pos);
-        }
+        // if (!success) {
+        //     com.secretasain.settlements.SettlementsMod.LOGGER.warn("GhostBlockRenderer: Failed to render ghost block at {}", pos);
+        // }
     }
 }
 

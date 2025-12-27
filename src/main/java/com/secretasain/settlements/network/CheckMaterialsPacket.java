@@ -16,9 +16,10 @@ import net.minecraft.registry.Registries;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -94,26 +95,42 @@ public class CheckMaterialsPacket {
                         }
                     }
                     
-                    // Check all 6 directions around the lectern for chests
+                    // Search for chests within a radius around the lectern (similar to VillagerDepositSystem)
+                    // This allows chests to be placed nearby but not necessarily adjacent
+                    double CHEST_SEARCH_RADIUS = 8.0; // Search within 8 blocks
                     Map<Identifier, Integer> foundMaterials = new HashMap<>();
                     int chestsChecked = 0;
+                    List<BlockPos> checkedPositions = new ArrayList<>();
                     
-                    for (Direction direction : Direction.values()) {
-                        BlockPos chestPos = lecternPos.offset(direction);
-                        BlockState blockState = world.getBlockState(chestPos);
-                        Block block = blockState.getBlock();
-                        
-                        // Check if it's a chest block
-                        if (block instanceof ChestBlock) {
-                            BlockEntity blockEntity = world.getBlockEntity(chestPos);
-                            if (blockEntity instanceof ChestBlockEntity) {
-                                ChestBlockEntity chestEntity = (ChestBlockEntity) blockEntity;
+                    // Search in a radius around the lectern
+                    int radius = (int) Math.ceil(CHEST_SEARCH_RADIUS);
+                    for (int dx = -radius; dx <= radius; dx++) {
+                        for (int dy = -radius; dy <= radius; dy++) {
+                            for (int dz = -radius; dz <= radius; dz++) {
+                                if (dx == 0 && dy == 0 && dz == 0) {
+                                    continue; // Skip lectern position itself
+                                }
                                 
-                                chestsChecked++;
-                                SettlementsMod.LOGGER.info("Found chest at {} (direction: {})", chestPos, direction);
+                                BlockPos chestPos = lecternPos.add(dx, dy, dz);
+                                double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
                                 
-                                // Extract items from chest - only required materials if building is specified
-                                for (int i = 0; i < chestEntity.size(); i++) {
+                                if (distance <= CHEST_SEARCH_RADIUS && !checkedPositions.contains(chestPos)) {
+                                    checkedPositions.add(chestPos);
+                                    
+                                    BlockState blockState = world.getBlockState(chestPos);
+                                    Block block = blockState.getBlock();
+                                    
+                                    // Check if it's a chest block
+                                    if (block instanceof ChestBlock) {
+                                        BlockEntity blockEntity = world.getBlockEntity(chestPos);
+                                        if (blockEntity instanceof ChestBlockEntity) {
+                                            ChestBlockEntity chestEntity = (ChestBlockEntity) blockEntity;
+                                            
+                                            chestsChecked++;
+                                            SettlementsMod.LOGGER.info("Found chest at {} (distance: {:.2f} blocks)", chestPos, distance);
+                                            
+                                            // Extract items from chest - only required materials if building is specified
+                                            for (int i = 0; i < chestEntity.size(); i++) {
                                     ItemStack stack = chestEntity.getStack(i);
                                     if (!stack.isEmpty()) {
                                         Item item = stack.getItem();
@@ -127,6 +144,8 @@ public class CheckMaterialsPacket {
                                                 Integer required = requiredMaterials.get(itemId);
                                                 if (required == null) {
                                                     // Not a required material, skip it
+                                                    // NOTE: This means items not in the required list won't be extracted
+                                                    // If you want to extract ALL materials regardless, set requiredMaterials to null
                                                     SettlementsMod.LOGGER.debug("Skipping item {} - not in required materials list (required materials: {})", 
                                                         itemId, requiredMaterials.keySet());
                                                     continue;
@@ -182,17 +201,20 @@ public class CheckMaterialsPacket {
                                             }
                                         }
                                     }
+                                            }
+                                            
+                                            // Mark chest inventory as changed
+                                            chestEntity.markDirty();
+                                        }
+                                    }
                                 }
-                                
-                                // Mark chest inventory as changed
-                                chestEntity.markDirty();
                             }
                         }
                     }
                     
                     if (chestsChecked == 0) {
-                        SettlementsMod.LOGGER.warn("No chests found adjacent to lectern at {}", lecternPos);
-                        player.sendMessage(net.minecraft.text.Text.literal("No chests found adjacent to lectern"), false);
+                        SettlementsMod.LOGGER.warn("No chests found within {} blocks of lectern at {}", CHEST_SEARCH_RADIUS, lecternPos);
+                        player.sendMessage(net.minecraft.text.Text.literal(String.format("No chests found within %.0f blocks of lectern", CHEST_SEARCH_RADIUS)), false);
                         return;
                     }
                     
