@@ -217,7 +217,11 @@ public class ConfirmPlacementPacket {
                 BlockState existingState = world.getBlockState(worldPos);
                 // Only place if position is air or replaceable
                 if (existingState.isAir() || existingState.isReplaceable()) {
-                    BlockState representedState = structureBlock.getBlockState();
+                    // Rotate block state if needed (for directional blocks like stairs, slabs, etc.)
+                    BlockState representedState = com.secretasain.settlements.building.BlockStateRotator.rotateBlockState(
+                        structureBlock.getBlockState(), 
+                        rotation
+                    );
                     
                     // Place ghost block
                     // CRITICAL: Use flags to ensure block is placed and persisted

@@ -3,6 +3,7 @@ package com.secretasain.settlements.ui;
 import com.secretasain.settlements.network.ActivateBuildModePacketClient;
 import com.secretasain.settlements.settlement.Settlement;
 import com.secretasain.settlements.settlement.VillagerData;
+import com.secretasain.settlements.settlement.GolemData;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -138,8 +139,10 @@ public class SettlementScreen extends Screen {
             listHeight,
             listY,
             listY + listHeight,
-            50, // Increased item height to prevent overlapping text
-            settlement.getVillagers()
+            65, // Increased item height to accommodate assignment location info
+            settlement.getVillagers(),
+            settlement.getGolems(),
+            settlement
         );
         villagerListWidget.setLeftPos(listX); // Set initial position off-screen
         // Set hire/fire callbacks
@@ -181,6 +184,26 @@ public class SettlementScreen extends Screen {
             } else if (!villager.isAssigned() && buildingId == null) {
                 // Show building selection dialog
                 showBuildingSelectionDialog(villager);
+            }
+        });
+        villagerListWidget.setOnAssignGolemCallback((golem, buildingId) -> {
+            UUID specialUuid = UUID.fromString("00000000-0000-0000-0000-000000000001");
+            if (buildingId != null && buildingId.equals(specialUuid)) {
+                showWallStationSelectionDialog(golem);
+            } else if (golem.isAssigned() && buildingId != null) {
+                // Unassign golem
+                com.secretasain.settlements.network.AssignGolemPacketClient.send(
+                    settlement.getId(),
+                    golem.getEntityId(),
+                    buildingId,
+                    false
+                );
+                this.client.execute(() -> {
+                    villagerListWidget.updateEntries();
+                });
+            } else if (!golem.isAssigned() && buildingId == null) {
+                // Show wall station selection dialog
+                showWallStationSelectionDialog(golem);
             }
         });
         this.addDrawableChild(villagerListWidget);
@@ -313,7 +336,7 @@ public class SettlementScreen extends Screen {
             "lvl1_oak_cartographer.nbt", "lvl1_oak_farm.nbt", "lvl1_oak_fence.nbt",
             "lvl1_oak_gate.nbt", "lvl1_oak_smithing.nbt",
             "lvl1_oak_house.nbt", "lvl2_oak_house.nbt", "lvl3_oak_house.nbt",
-            "lvl1_trader_hut.nbt"
+            "lvl1_trader_hut.nbt", "lvl1_town_hall.nbt", "lvl1_lumber_yard.nbt"
         };
         
         try {
@@ -1275,8 +1298,10 @@ public class SettlementScreen extends Screen {
                     listHeight,
                     listY,
                     listY + listHeight,
-                    50, // Item height
-                    settlement.getVillagers()
+                    65, // Increased item height to accommodate assignment location info
+                    settlement.getVillagers(),
+                    settlement.getGolems(),
+                    settlement
                 );
                 
                 // Restore callbacks (same as in init())
@@ -1339,6 +1364,7 @@ public class SettlementScreen extends Screen {
                     this.addDrawableChild(villagerListWidget);
                 }
             }
+            
             
             // Position refresh button
             if (refreshVillagersButton != null) {
@@ -2495,6 +2521,90 @@ public class SettlementScreen extends Screen {
     }
     
     /**
+     * Shows a wall station selection dialog for assigning a golem to a wall station.
+     */
+    private void showWallStationSelectionDialog(GolemData golem) {
+        // Get available wall stations (completed wall buildings only)
+        List<com.secretasain.settlements.settlement.Building> availableWallStations = 
+            com.secretasain.settlements.settlement.WallStationDetector.findWallStations(settlement, null);
+        
+        if (availableWallStations.isEmpty()) {
+            if (this.client != null && this.client.player != null) {
+                this.client.player.sendMessage(
+                    net.minecraft.text.Text.translatable("settlements.golem.no_wall_stations_available"),
+                    false
+                );
+            }
+            return;
+        }
+        
+        // Position building selection dialog in the same location as the structure sidebar
+        int screenWidth = 400;
+        int screenHeight = 280;
+        int x = (this.width - screenWidth) / 2;
+        int y = (this.height - screenHeight) / 2;
+        
+        int sidebarWidth = 180;
+        int sidebarX = x - sidebarWidth - 15;
+        int sidebarY = y;
+        int sidebarHeight = screenHeight;
+        
+        int sidebarTitleHeight = 20;
+        int sidebarPadding = 5;
+        int sidebarButtonHeight = 25;
+        int sidebarButtonPadding = 5;
+        int sidebarListY = sidebarY + sidebarTitleHeight + sidebarPadding;
+        int sidebarListHeight = sidebarHeight - sidebarTitleHeight - sidebarButtonHeight - sidebarPadding - sidebarButtonPadding;
+        
+        int contentWidth = sidebarWidth - sidebarPadding * 2;
+        
+        // Create building selection widget (reuse BuildingSelectionWidget for wall stations)
+        buildingSelectionWidget = new BuildingSelectionWidget(
+            this.client,
+            contentWidth,
+            sidebarListHeight,
+            sidebarListY,
+            sidebarListY + sidebarListHeight,
+            26,
+            availableWallStations,
+            null, // No villager for golem assignment
+            settlement
+        );
+        
+        int widgetXOffset = 22;
+        buildingSelectionWidget.setLeftPos(sidebarX + sidebarPadding + widgetXOffset);
+        
+        buildingSelectionWidget.setOnBuildingSelected((v, buildingId) -> {
+            // Assign golem to selected wall station
+            com.secretasain.settlements.network.AssignGolemPacketClient.send(
+                settlement.getId(),
+                golem.getEntityId(),
+                buildingId,
+                true
+            );
+            // Close dialog
+            showingBuildingSelection = false;
+            if (buildingSelectionWidget != null) {
+                this.remove(buildingSelectionWidget);
+                buildingSelectionWidget = null;
+            }
+            // Recreate permanent sidebar after closing dialog
+            if (activeTab == TabType.VILLAGERS) {
+                createBuildingAssignmentSidebar();
+            }
+            // Refresh villager list (which now includes golems)
+            this.client.execute(() -> {
+                if (villagerListWidget != null) {
+                    villagerListWidget.updateEntries();
+                }
+            });
+        });
+        
+        this.addDrawableChild(buildingSelectionWidget);
+        showingBuildingSelection = true;
+    }
+    
+    /**
      * Closes the building selection dialog.
      */
     private void closeBuildingSelectionDialog() {
@@ -2848,7 +2958,7 @@ public class SettlementScreen extends Screen {
             com.secretasain.settlements.SettlementsMod.LOGGER.info("Found pending data for building {}, applying to widget: outputs={}, farmlandCount={}, cropStats={}", 
                 buildingId, pending.outputs != null ? pending.outputs.size() : "null", pending.farmlandCount,
                 pending.cropStats != null ? pending.cropStats.size() : "null");
-            buildingOutputWidget.updateWithServerData(pending.outputs, pending.farmlandCount, pending.cropStats);
+                buildingOutputWidget.updateWithServerData(pending.outputs, pending.farmlandCount, pending.cropStats, pending.boneMealProduced);
             pendingOutputData.remove(buildingId);
             com.secretasain.settlements.SettlementsMod.LOGGER.info("Applied pending output data to newly created widget for building {}", buildingId);
         } else {
@@ -2895,13 +3005,16 @@ public class SettlementScreen extends Screen {
         final java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> outputs;
         final int farmlandCount;
         final java.util.List<com.secretasain.settlements.settlement.CropStatistics> cropStats;
+        final int boneMealProduced;
         
         PendingOutputData(java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> outputs, 
                          int farmlandCount,
-                         java.util.List<com.secretasain.settlements.settlement.CropStatistics> cropStats) {
+                         java.util.List<com.secretasain.settlements.settlement.CropStatistics> cropStats,
+                         int boneMealProduced) {
             this.outputs = outputs;
             this.farmlandCount = farmlandCount;
             this.cropStats = cropStats;
+            this.boneMealProduced = boneMealProduced;
         }
     }
     
@@ -2912,16 +3025,17 @@ public class SettlementScreen extends Screen {
     public void updateBuildingOutputData(UUID buildingId, 
                                         java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> outputs,
                                         int farmlandCount) {
-        updateBuildingOutputData(buildingId, outputs, farmlandCount, null);
+        updateBuildingOutputData(buildingId, outputs, farmlandCount, null, 0);
     }
     
     /**
-     * Updates building output widget with data received from server (with crop statistics).
+     * Updates building output widget with data received from server (with crop statistics and bone meal).
      */
     public void updateBuildingOutputData(UUID buildingId, 
                                         java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> outputs,
                                         int farmlandCount,
-                                        java.util.List<com.secretasain.settlements.settlement.CropStatistics> cropStats) {
+                                        java.util.List<com.secretasain.settlements.settlement.CropStatistics> cropStats,
+                                        int boneMealProduced) {
         com.secretasain.settlements.SettlementsMod.LOGGER.info("updateBuildingOutputData called: buildingId={}, widget={}, widgetBuilding={}, outputs={}, farmlandCount={}", 
             buildingId, 
             buildingOutputWidget != null ? "exists" : "null",
@@ -2933,21 +3047,21 @@ public class SettlementScreen extends Screen {
             if (buildingOutputWidget.getBuilding() != null && 
                 buildingOutputWidget.getBuilding().getId().equals(buildingId)) {
                 // Widget exists and matches - apply data immediately
-                buildingOutputWidget.updateWithServerData(outputs, farmlandCount, cropStats);
+                buildingOutputWidget.updateWithServerData(outputs, farmlandCount, cropStats, boneMealProduced);
                 // Clear pending data for this building
                 pendingOutputData.remove(buildingId);
                 com.secretasain.settlements.SettlementsMod.LOGGER.info("Applied output data to existing widget for building {}", buildingId);
                 return;
             } else {
                 // Widget exists but for different building - store as pending
-                pendingOutputData.put(buildingId, new PendingOutputData(outputs, farmlandCount, cropStats));
+                pendingOutputData.put(buildingId, new PendingOutputData(outputs, farmlandCount, cropStats, boneMealProduced));
                 com.secretasain.settlements.SettlementsMod.LOGGER.info("Widget exists for different building {}, stored as pending for {}", 
                     buildingOutputWidget.getBuilding() != null ? buildingOutputWidget.getBuilding().getId() : "null", buildingId);
             }
         } else {
             // Widget doesn't exist yet - store as pending
             // This is normal - data can arrive before widget is created
-            pendingOutputData.put(buildingId, new PendingOutputData(outputs, farmlandCount, cropStats));
+            pendingOutputData.put(buildingId, new PendingOutputData(outputs, farmlandCount, cropStats, boneMealProduced));
             com.secretasain.settlements.SettlementsMod.LOGGER.info("Widget not ready yet, stored as pending: buildingId={} (will apply when widget is created)", buildingId);
             
             // Try to create widget if we're in Villagers tab and have a selected building

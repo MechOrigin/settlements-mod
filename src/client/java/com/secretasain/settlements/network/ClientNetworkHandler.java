@@ -188,12 +188,15 @@ public class ClientNetworkHandler {
                 // Read all data based on type
                 java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> outputs = null;
                 int farmlandCount = -1;
+                int boneMealProduced = 0;
                 java.util.List<com.secretasain.settlements.settlement.CropStatistics> cropStats = null;
                 
                 if (isFarm) {
                     farmlandCount = buf.readInt();
+                    boneMealProduced = buf.readInt(); // Read bone meal production
                     int cropStatsCount = buf.readInt();
-                    SettlementsMod.LOGGER.debug("Farm building data: farmlandCount={}, cropStatsCount={}", farmlandCount, cropStatsCount);
+                    SettlementsMod.LOGGER.debug("Farm building data: farmlandCount={}, boneMeal={}, cropStatsCount={}", 
+                        farmlandCount, boneMealProduced, cropStatsCount);
                     
                     if (cropStatsCount > 0) {
                         cropStats = new java.util.ArrayList<>();
@@ -266,6 +269,7 @@ public class ClientNetworkHandler {
                 final UUID finalBuildingId = buildingId;
                 final java.util.List<com.secretasain.settlements.settlement.BuildingOutputConfig.OutputEntry> finalOutputs = outputs;
                 final int finalFarmlandCount = farmlandCount;
+                final int finalBoneMealProduced = boneMealProduced;
                 final java.util.List<com.secretasain.settlements.settlement.CropStatistics> finalCropStats = cropStats;
                 final boolean finalIsFarm = isFarm;
                 
@@ -275,13 +279,13 @@ public class ClientNetworkHandler {
                     if (client.currentScreen instanceof SettlementScreen) {
                         SettlementScreen screen = (SettlementScreen) client.currentScreen;
                         if (finalIsFarm) {
-                            SettlementsMod.LOGGER.debug("Updating farm building output data: buildingId={}, farmlandCount={}, cropStats={}", 
-                                finalBuildingId, finalFarmlandCount, finalCropStats != null ? finalCropStats.size() : 0);
-                            screen.updateBuildingOutputData(finalBuildingId, null, finalFarmlandCount, finalCropStats);
+                            SettlementsMod.LOGGER.debug("Updating farm building output data: buildingId={}, farmlandCount={}, boneMeal={}, cropStats={}", 
+                                finalBuildingId, finalFarmlandCount, finalBoneMealProduced, finalCropStats != null ? finalCropStats.size() : 0);
+                            screen.updateBuildingOutputData(finalBuildingId, null, finalFarmlandCount, finalCropStats, finalBoneMealProduced);
                         } else {
                             SettlementsMod.LOGGER.debug("Updating non-farm building output data: buildingId={}, outputCount={}", 
                                 finalBuildingId, finalOutputs != null ? finalOutputs.size() : 0);
-                            screen.updateBuildingOutputData(finalBuildingId, finalOutputs, -1, null);
+                            screen.updateBuildingOutputData(finalBuildingId, finalOutputs, -1, null, 0);
                         }
                     } else {
                         SettlementsMod.LOGGER.warn("Received building output data but no SettlementScreen is open");

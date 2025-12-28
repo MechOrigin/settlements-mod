@@ -60,9 +60,21 @@
   
   "settlements.ui.villagers.assigned": "Assigned",
   "settlements.ui.villagers.unassigned": "No assignment",
+  "settlements.ui.villagers.assigned_to": "Assigned to: %s",
+  "settlements.ui.villagers.assignment_location": "Location: %d, %d, %d",
   "settlements.ui.villagers.assign_work": "Assign Work",
   "settlements.ui.villagers.unassign_work": "Unassign",
   "settlements.ui.villagers.buildings": "Buildings",
+  
+  "settlements.ui.golems.unnamed": "Unnamed Golem",
+  "settlements.ui.golems.assigned": "Assigned",
+  "settlements.ui.golems.unassigned": "No assignment",
+  "settlements.ui.golems.assigned_to": "Assigned to: %s",
+  "settlements.ui.golems.assignment_location": "Location: %d, %d, %d",
+  "settlements.ui.golems.assign_wall_station": "Assign",
+  "settlements.ui.golems.unassign_wall_station": "Unassign",
+  
+  "settlements.golem.no_wall_stations_available": "No wall stations available for assignment",
   
   "settlements.work.assigned": "Villager assigned to building",
   "settlements.work.unassigned": "Villager unassigned from building",
@@ -73,6 +85,12 @@
   "settlements.work.building_full": "Building is full! Capacity: %d, Assigned: %d",
   "settlements.ui.work.select_building": "Select Building for %s",
   "settlements.ui.work.press_esc": "Press ESC to cancel",
+  
+  "settlements.golem.assigned": "Golem assigned to wall station",
+  "settlements.golem.unassigned": "Golem unassigned from wall station",
+  "settlements.golem.assignment_failed": "Failed to assign golem",
+  "settlements.golem.unassignment_failed": "Failed to unassign golem",
+  "settlements.golem.settlement_not_found": "Settlement not found",
   
   "settlements.error.generic": "An error occurred",
   

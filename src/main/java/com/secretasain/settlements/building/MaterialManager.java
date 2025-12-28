@@ -109,9 +109,16 @@ public class MaterialManager {
      * Consumes materials from a settlement's storage.
      * @param settlement The settlement
      * @param materials Map of material Identifier to count to consume
+     * @param world The server world (for creative mode check)
      * @return true if all materials were successfully consumed, false if insufficient materials
      */
-    public static boolean consumeMaterials(Settlement settlement, Map<Identifier, Integer> materials) {
+    public static boolean consumeMaterials(Settlement settlement, Map<Identifier, Integer> materials, net.minecraft.server.world.ServerWorld world) {
+        // Check if creative mode is enabled (skip material consumption in creative)
+        if (isCreativeModeEnabled(world)) {
+            com.secretasain.settlements.SettlementsMod.LOGGER.debug("Creative mode enabled - skipping material consumption");
+            return true; // Always succeed in creative mode
+        }
+        
         // First check if we can afford it
         if (!canAfford(settlement, materials)) {
             return false;
@@ -138,6 +145,27 @@ public class MaterialManager {
     }
     
     /**
+     * Checks if creative mode is enabled for the settlement.
+     * Creative mode is enabled if any player in the world is in creative mode.
+     * @param world The server world
+     * @return true if creative mode is enabled
+     */
+    private static boolean isCreativeModeEnabled(net.minecraft.server.world.ServerWorld world) {
+        if (world == null) {
+            return false;
+        }
+        
+        // Check if any player in the world is in creative mode
+        for (net.minecraft.server.network.ServerPlayerEntity player : world.getPlayers()) {
+            if (player.isCreative()) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
      * Adds materials to a settlement's storage.
      * @param settlement The settlement
      * @param materials Map of material Identifier to count to add
@@ -159,14 +187,26 @@ public class MaterialManager {
      * Consumes materials for a specific building and updates the building's provided materials.
      * @param building The building
      * @param settlement The settlement
+     * @param world The server world (for creative mode check)
      * @return true if materials were successfully consumed
      */
-    public static boolean consumeMaterialsForBuilding(Building building, Settlement settlement) {
+    public static boolean consumeMaterialsForBuilding(Building building, Settlement settlement, net.minecraft.server.world.ServerWorld world) {
         Map<Identifier, Integer> required = building.getRequiredMaterials();
         
         if (required.isEmpty()) {
             // No materials required, consider it successful
             return true;
+        }
+        
+        // Check if creative mode is enabled (skip material consumption in creative)
+        if (isCreativeModeEnabled(world)) {
+            com.secretasain.settlements.SettlementsMod.LOGGER.debug("Creative mode enabled - skipping material consumption for building {}", building.getId());
+            // Still set provided materials for tracking, but don't consume from settlement
+            building.clearProvidedMaterials();
+            for (Map.Entry<Identifier, Integer> entry : required.entrySet()) {
+                building.setProvidedMaterial(entry.getKey(), entry.getValue());
+            }
+            return true; // Always succeed in creative mode
         }
         
         // Check if we can afford it
@@ -179,7 +219,7 @@ public class MaterialManager {
         building.clearProvidedMaterials();
         
         // Consume materials from settlement
-        if (!consumeMaterials(settlement, required)) {
+        if (!consumeMaterials(settlement, required, world)) {
             return false;
         }
         

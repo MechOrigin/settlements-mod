@@ -1,5 +1,8 @@
 package com.secretasain.settlements.settlement;
 
+import com.secretasain.settlements.SettlementsMod;
+import com.secretasain.settlements.townhall.TownHallData;
+import com.secretasain.settlements.townhall.TownHallDetector;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.minecraft.entity.passive.VillagerEntity;
@@ -66,6 +69,31 @@ public class VillagerEventHandlers {
         // Mark as dirty to save changes if a villager was removed
         if (removed) {
             manager.markDirty();
+        }
+        
+        // Also clean up from town hall tracking if this villager was spawned by a town hall
+        cleanupTownHallTracking(villagerId, world, manager);
+    }
+    
+    /**
+     * Removes a villager from town hall tracking if it was spawned by a town hall.
+     * @param villagerId The UUID of the removed villager
+     * @param world The server world
+     * @param manager The settlement manager
+     */
+    private static void cleanupTownHallTracking(UUID villagerId, ServerWorld world, SettlementManager manager) {
+        for (Settlement settlement : manager.getAllSettlements()) {
+            for (Building building : settlement.getBuildings()) {
+                if (TownHallDetector.isTownHall(building)) {
+                    TownHallData hallData = TownHallData.getOrCreate(building);
+                    if (hallData.getSpawnedVillagerIds().contains(villagerId)) {
+                        hallData.removeSpawnedVillager(villagerId);
+                        hallData.saveToBuilding(building);
+                        SettlementsMod.LOGGER.debug("Removed villager {} from town hall {} tracking (villager died/despawned)",
+                            villagerId, building.getId());
+                    }
+                }
+            }
         }
     }
 }

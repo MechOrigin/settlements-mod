@@ -35,6 +35,9 @@ public class BuildingCapacity {
             return 3; // Smithing buildings: 3 villagers
         } else if (structureName.contains("farm") || structureName.contains("farmland")) {
             return 2; // Farms: 2 villagers
+        } else if (structureName.contains("lumber") || structureName.contains("lumberyard") ||
+                   structureName.contains("lumber_jack") || structureName.contains("lumberjack")) {
+            return 2; // Lumberyard buildings: 2 villagers
         } else if (structureName.contains("cartographer") || structureName.contains("cartography")) {
             return 2; // Cartographer buildings: 2 villagers
         } else if (structureName.contains("house")) {

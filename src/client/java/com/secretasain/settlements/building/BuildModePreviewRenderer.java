@@ -63,7 +63,11 @@ public class BuildModePreviewRenderer {
                 BlockPos relativePos = block.getRelativePos();
                 BlockPos worldPos = applyRotation(relativePos, rotation).add(placementPos);
                 
-                BlockState blockState = block.getBlockState();
+                // Rotate block state if needed (for directional blocks like stairs, slabs, etc.)
+                BlockState blockState = com.secretasain.settlements.building.BlockStateRotator.rotateBlockState(
+                    block.getBlockState(), 
+                    rotation
+                );
                 
                 // Skip air blocks
                 if (blockState.isAir()) {

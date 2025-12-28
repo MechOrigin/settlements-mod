@@ -1,9 +1,12 @@
 package com.secretasain.settlements.building;
 
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtList;
+import net.minecraft.nbt.NbtString;
 import net.minecraft.registry.Registries;
+import net.minecraft.state.property.Property;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3i;
@@ -52,13 +55,15 @@ public class StructureData {
                     String blockName = paletteEntry.getString("Name");
                     Identifier blockId = Identifier.tryParse(blockName);
                     if (blockId != null) {
-                        BlockState state = Registries.BLOCK.get(blockId).getDefaultState();
-                        // Handle properties if present
+                        net.minecraft.block.Block block = Registries.BLOCK.get(blockId);
+                        BlockState state = block.getDefaultState();
+                        
+                        // Parse properties from NBT
                         if (paletteEntry.contains("Properties", 10)) {
                             NbtCompound properties = paletteEntry.getCompound("Properties");
-                            // Apply properties to state (simplified - would need full property parsing)
-                            // For now, use default state
+                            state = parseBlockStateWithProperties(block, state, properties);
                         }
+                        
                         palette.put(i, state);
                     }
                 }
@@ -104,6 +109,50 @@ public class StructureData {
             if (a.getX() != b.getX()) return Integer.compare(a.getX(), b.getX());
             return Integer.compare(a.getZ(), b.getZ());
         });
+    }
+    
+    /**
+     * Parses block state properties from NBT and applies them to the block state.
+     * @param block The block
+     * @param defaultState The default state
+     * @param propertiesNbt NBT compound containing property key-value pairs
+     * @return BlockState with properties applied
+     */
+    private static BlockState parseBlockStateWithProperties(Block block, BlockState defaultState, NbtCompound propertiesNbt) {
+        BlockState state = defaultState;
+        
+        // Iterate through all properties in the NBT
+        for (String key : propertiesNbt.getKeys()) {
+            String value = propertiesNbt.getString(key);
+            
+            // Find the property by name
+            Property<?> property = null;
+            for (Property<?> prop : state.getProperties()) {
+                if (prop.getName().equals(key)) {
+                    property = prop;
+                    break;
+                }
+            }
+            
+            if (property != null) {
+                // Parse the property value
+                state = parsePropertyValue(state, property, value);
+            }
+        }
+        
+        return state;
+    }
+    
+    /**
+     * Parses a property value and applies it to the block state.
+     */
+    @SuppressWarnings("unchecked")
+    private static <T extends Comparable<T>> BlockState parsePropertyValue(BlockState state, Property<T> property, String value) {
+        Optional<T> parsedValue = property.parse(value);
+        if (parsedValue.isPresent()) {
+            return state.with(property, parsedValue.get());
+        }
+        return state;
     }
     
     /**

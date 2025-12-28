@@ -90,9 +90,10 @@ public class BuildingOutputDataPacket {
                         // For farm buildings, scan crops and calculate statistics
                         List<CropStatistics> cropStats = scanCropsAndCalculateStatistics(building, world);
                         int farmlandCount = countFarmlandInStructure(building, world);
-                        SettlementsMod.LOGGER.info("Farm building: farmlandCount={}, cropTypes={}, sending response", 
-                            farmlandCount, cropStats.size());
-                        sendResponse(player, buildingId, null, farmlandCount, cropStats);
+                        int boneMealProduced = com.secretasain.settlements.farm.FarmComposterSystem.getBoneMealProduction(buildingId);
+                        SettlementsMod.LOGGER.info("Farm building: farmlandCount={}, cropTypes={}, boneMeal={}, sending response", 
+                            farmlandCount, cropStats.size(), boneMealProduced);
+                        sendResponse(player, buildingId, null, farmlandCount, cropStats, boneMealProduced);
                     } else if (buildingType != null) {
                         // For other buildings, get outputs from config
                         // Ensure config is loaded - always try to load if not loaded
@@ -136,13 +137,23 @@ public class BuildingOutputDataPacket {
     private static void sendResponse(ServerPlayerEntity player, UUID buildingId, 
                                      List<BuildingOutputConfig.OutputEntry> outputs, int farmlandCount,
                                      List<CropStatistics> cropStats) {
+        sendResponse(player, buildingId, outputs, farmlandCount, cropStats, 0);
+    }
+    
+    /**
+     * Sends building output data to client (with crop statistics and bone meal for farm buildings).
+     */
+    private static void sendResponse(ServerPlayerEntity player, UUID buildingId, 
+                                     List<BuildingOutputConfig.OutputEntry> outputs, int farmlandCount,
+                                     List<CropStatistics> cropStats, int boneMealProduced) {
         var buf = PacketByteBufs.create();
         buf.writeUuid(buildingId);
         
         if (farmlandCount >= 0) {
-            // Farm building - send farmland count and crop statistics
+            // Farm building - send farmland count, crop statistics, and bone meal
             buf.writeBoolean(true); // isFarm
             buf.writeInt(farmlandCount);
+            buf.writeInt(boneMealProduced); // Bone meal produced by second villager
             
             // Send crop statistics
             if (cropStats != null && !cropStats.isEmpty()) {
@@ -165,12 +176,12 @@ public class BuildingOutputDataPacket {
                         buf.writeInt(entry.getValue());
                     }
                 }
-                SettlementsMod.LOGGER.debug("Sending farm building data: buildingId={}, farmlandCount={}, cropTypes={}", 
-                    buildingId, farmlandCount, cropStats.size());
+                SettlementsMod.LOGGER.debug("Sending farm building data: buildingId={}, farmlandCount={}, cropTypes={}, boneMeal={}", 
+                    buildingId, farmlandCount, cropStats.size(), boneMealProduced);
             } else {
                 buf.writeInt(0);
-                SettlementsMod.LOGGER.debug("Sending farm building data: buildingId={}, farmlandCount={}, no crops", 
-                    buildingId, farmlandCount);
+                SettlementsMod.LOGGER.debug("Sending farm building data: buildingId={}, farmlandCount={}, no crops, boneMeal={}", 
+                    buildingId, farmlandCount, boneMealProduced);
             }
         } else if (outputs != null && !outputs.isEmpty()) {
             // Regular building - send output entries

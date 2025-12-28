@@ -127,7 +127,7 @@ public class CheckMaterialsPacket {
                                             ChestBlockEntity chestEntity = (ChestBlockEntity) blockEntity;
                                             
                                             chestsChecked++;
-                                            SettlementsMod.LOGGER.info("Found chest at {} (distance: {:.2f} blocks)", chestPos, distance);
+                                            SettlementsMod.LOGGER.info("Found chest at {} (distance: {} blocks)", chestPos, String.format("%.2f", distance));
                                             
                                             // Extract items from chest - only required materials if building is specified
                                             for (int i = 0; i < chestEntity.size(); i++) {

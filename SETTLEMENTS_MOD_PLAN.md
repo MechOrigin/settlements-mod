@@ -1341,6 +1341,736 @@ TradeOfferConfig {
 
 ---
 
+## Phase 5: Advanced Settlement Features
+
+### 5.1 Town Hall Building System
+**Goal**: Add special mechanics when lectern is placed in a town hall building, including librarian assignment, passive villager spawning, and increased wandering trader spawn rates
+
+**Tasks**:
+- [ ] Create town hall NBT structure file
+  - [ ] Design town hall structure (larger building with multiple workstations)
+  - [ ] Create `lvl1_town_hall.nbt` structure file (and potentially higher tiers)
+  - [ ] Place structure file in `src/main/resources/data/settlements/structures/`
+  - [ ] Ensure structure includes appropriate blocks (lectern, bookshelves, multiple workstations)
+  - [ ] Include blocks for villager job assignment (lectern for librarian, other workstations)
+  - [ ] Test structure loads correctly via `StructureLoader`
+- [ ] Implement town hall detection system
+  - [ ] Create `TownHallDetector.java` utility class
+  - [ ] Add method: `isTownHall(Building)` to check if building is town hall type
+  - [ ] Check structure type identifier (e.g., contains "town_hall" in path)
+  - [ ] Store town hall status in `Building` custom data
+  - [ ] Add `isTownHall()` method to `Building` class
+- [ ] Implement lectern-in-town-hall detection
+  - [ ] Modify `LecternBlockMixin` to detect if lectern is inside town hall building
+  - [ ] Check if lectern position is within any town hall building's structure bounds
+  - [ ] Store town hall association in settlement data
+  - [ ] Add `getTownHallForLectern(BlockPos)` method to `SettlementManager`
+- [ ] Create town hall data structure
+  - [ ] Create `TownHallData.java` class
+    - [ ] Add field: `UUID buildingId` (town hall building ID)
+    - [ ] Add field: `UUID assignedLibrarianId` (villager assigned as librarian)
+    - [ ] Add field: `int villagerSpawnCap` (maximum villagers that can be spawned)
+    - [ ] Add field: `int currentSpawnedVillagers` (count of villagers spawned by town hall)
+    - [ ] Add field: `long lastVillagerSpawnTime` (tick timestamp of last spawn)
+    - [ ] Add field: `int villagerSpawnInterval` (ticks between spawn attempts, e.g., 12000 = 10 minutes)
+    - [ ] Add field: `double wanderingTraderSpawnMultiplier` (multiplier for wandering trader spawn chance)
+  - [ ] Implement `toNbt()` and `fromNbt()` methods for persistence
+  - [ ] Store town hall data in `Building` custom data (similar to `TraderHutData`)
+- [ ] Implement librarian assignment system
+  - [ ] Create `TownHallLibrarianManager.java` class
+  - [ ] Add method: `assignLibrarian(ServerWorld, Settlement, Building, VillagerData)`
+    - [ ] Check if building is town hall
+    - [ ] Check if villager is already assigned to another building
+    - [ ] Get villager entity from world
+    - [ ] Set villager profession to `librarian` using `villager.setVillagerData()`
+    - [ ] Find lectern block within town hall structure
+    - [ ] Ensure villager can detect lectern as workstation
+    - [ ] Force villager restock to update profession appearance
+    - [ ] Store assignment in `TownHallData`
+  - [ ] Add method: `unassignLibrarian(ServerWorld, Settlement, Building)`
+    - [ ] Restore villager to original profession (or NONE if was jobless)
+    - [ ] Clear assignment from `TownHallData`
+  - [ ] Handle villager death/despawn
+    - [ ] Clear assignment if assigned librarian dies or despawns
+    - [ ] Update `TownHallData` accordingly
+- [ ] Implement passive villager spawning system
+  - [ ] Create `TownHallVillagerSpawner.java` class
+  - [ ] Add server tick handler to check town halls periodically
+    - [ ] Scan all settlements for town hall buildings
+    - [ ] Check if town hall has assigned librarian
+    - [ ] Check if current spawned villager count < spawn cap
+    - [ ] Check if enough time has passed since last spawn (spawn interval)
+  - [ ] Implement villager spawn logic
+    - [ ] Calculate spawn position near town hall (within structure bounds or adjacent)
+    - [ ] Use `ServerWorld.spawnEntity()` to spawn new `VillagerEntity`
+    - [ ] Set villager profession to NONE (jobless villager)
+    - [ ] Set villager age to adult (not baby)
+    - [ ] Add villager to settlement's villager list via `VillagerScanningSystem`
+    - [ ] Increment `currentSpawnedVillagers` in `TownHallData`
+    - [ ] Update `lastVillagerSpawnTime` to current tick
+  - [ ] Implement spawn cap system
+    - [ ] Default spawn cap: 5 villagers per town hall
+    - [ ] Configurable via JSON or building tier (higher tier = higher cap)
+    - [ ] Check total settlement villagers vs cap before spawning
+    - [ ] Prevent spawning if cap reached
+  - [ ] Add spawn interval configuration
+    - [ ] Default: 12000 ticks (10 minutes at 20 TPS)
+    - [ ] Configurable per town hall tier
+    - [ ] Higher tier = faster spawn rate
+- [ ] Implement wandering trader spawn rate increase
+  - [ ] Create `WanderingTraderSpawnEnhancer.java` class
+  - [ ] Hook into Minecraft's wandering trader spawn system
+    - [ ] Option A: Use mixin to intercept `WanderingTraderSpawner.trySpawn()` method
+    - [ ] Option B: Create custom spawn system that runs alongside vanilla
+  - [ ] Calculate spawn chance multiplier based on town halls
+    - [ ] Count active town halls in world (with assigned librarians)
+    - [ ] Apply multiplier: base chance × (1 + 0.5 × townHallCount)
+    - [ ] Cap multiplier at 3x (3 town halls = max multiplier)
+  - [ ] Implement enhanced spawn logic
+    - [ ] Check if enhanced spawn should occur (based on multiplier)
+    - [ ] Spawn wandering trader near town hall if possible
+    - [ ] Otherwise, use vanilla spawn logic with increased chance
+  - [ ] Track spawned wandering traders
+    - [ ] Store trader entity IDs in settlement data
+    - [ ] Mark traders as "attracted" to settlement
+- [ ] Implement wandering trader despawn system
+  - [ ] Create `WanderingTraderDespawnHandler.java` class
+  - [ ] Add server tick handler to track wandering traders
+    - [ ] Scan for wandering traders associated with settlements
+    - [ ] Track trader lifetime (ticks since spawn)
+    - [ ] Check if trader should despawn (e.g., after 24000 ticks = 20 minutes)
+  - [ ] Implement despawn logic
+    - [ ] Remove trader from settlement tracking
+    - [ ] Use `Entity.remove()` to despawn trader entity
+    - [ ] Log despawn event for debugging
+  - [ ] Add trader leave behavior (optional enhancement)
+    - [ ] Make traders walk away from settlement before despawning
+    - [ ] Use pathfinding to move trader out of settlement radius
+    - [ ] Despawn after trader leaves settlement area
+- [ ] Add town hall workstation detection
+  - [ ] Create method to find all workstations within town hall structure
+    - [ ] Load structure data for town hall building
+    - [ ] Scan structure blocks for workstation blocks (lectern, smithing table, etc.)
+    - [ ] Calculate world positions of workstations (accounting for rotation)
+    - [ ] Return list of workstation positions
+  - [ ] Store workstation positions in `TownHallData`
+  - [ ] Use workstations for villager job assignment
+    - [ ] When villager is assigned to town hall, assign them to appropriate workstation
+    - [ ] Librarian uses lectern, other villagers use other workstations
+- [ ] Implement UI integration for town halls
+  - [ ] Display town hall status in building list
+    - [ ] Show "Has Librarian" or "No Librarian" status
+    - [ ] Show "X/Y Villagers Spawned" (current/spawn cap)
+    - [ ] Show "Next Spawn: X minutes" countdown
+    - [ ] Show assigned librarian name if assigned
+  - [ ] Add town hall assignment UI
+    - [ ] When town hall is selected, show "Assign Librarian" button
+    - [ ] Open villager selection dialog (filter to show available villagers)
+    - [ ] On assignment, trigger librarian conversion
+    - [ ] Show "Unassign Librarian" button if librarian is assigned
+  - [ ] Display town hall statistics
+    - [ ] Show total villagers spawned by this town hall
+    - [ ] Show spawn rate (villagers per hour)
+    - [ ] Show wandering trader spawn multiplier
+- [ ] Add network packet support
+  - [ ] Create `AssignTownHallLibrarianPacket.java` for assigning librarian
+    - [ ] Send: Building ID, Villager ID
+    - [ ] Server validates assignment and converts villager to librarian
+    - [ ] Send response packet with success/failure
+  - [ ] Create `UnassignTownHallLibrarianPacket.java` for unassigning librarian
+    - [ ] Send: Building ID
+    - [ ] Server restores villager to original profession
+  - [ ] Register packets in network initialization
+- [ ] Add configuration system for town hall mechanics
+  - [ ] Create `town_hall_config.json` configuration file
+    - [ ] Define spawn intervals per tier (lvl1, lvl2, lvl3)
+    - [ ] Define spawn caps per tier
+    - [ ] Define wandering trader spawn multipliers per tier
+    - [ ] Define librarian profession requirements
+  - [ ] Create `TownHallConfig.java` data class
+    - [ ] Load config from JSON on server start
+    - [ ] Cache config for quick access
+    - [ ] Provide getters for spawn intervals, caps, multipliers
+
+**Technical Notes**:
+- **Town Hall Detection**: Check structure type identifier contains "town_hall" or similar pattern
+- **Librarian Assignment**: Similar to trader hut villager assignment, but sets profession to librarian instead of farmer
+- **Villager Spawning**: Use `ServerWorld.spawnEntity()` with proper position calculation (avoid spawning in walls)
+- **Spawn Cap**: Track spawned villagers per town hall to prevent unlimited spawning
+- **Wandering Trader Enhancement**: Use mixin to intercept spawn logic, or create parallel spawn system
+- **Despawn System**: Track trader lifetime and remove after timeout period
+- **Workstation Detection**: Use `StructureData` to find blocks within structure, account for rotation
+- **Performance**: Check town halls every 100 ticks (5 seconds) instead of every tick
+
+**Data Structures**:
+```java
+TownHallData {
+    UUID buildingId
+    UUID assignedLibrarianId
+    int villagerSpawnCap              // Max villagers this town hall can spawn
+    int currentSpawnedVillagers        // Count of spawned villagers
+    long lastVillagerSpawnTime        // Tick timestamp of last spawn
+    int villagerSpawnInterval         // Ticks between spawn attempts
+    double wanderingTraderMultiplier  // Spawn chance multiplier
+    List<BlockPos> workstationPositions  // Positions of workstations in structure
+}
+```
+
+**JSON Configuration Format** (`town_hall_config.json`):
+```json
+{
+  "tiers": {
+    "lvl1": {
+      "spawnInterval": 12000,
+      "spawnCap": 5,
+      "wanderingTraderMultiplier": 1.5
+    },
+    "lvl2": {
+      "spawnInterval": 8000,
+      "spawnCap": 8,
+      "wanderingTraderMultiplier": 2.0
+    },
+    "lvl3": {
+      "spawnInterval": 6000,
+      "spawnCap": 12,
+      "wanderingTraderMultiplier": 2.5
+    }
+  }
+}
+```
+
+### 5.2 Villager Pathfinding Improvements & Ender Upgrade System
+**Goal**: Improve villager pathfinding to prevent teleportation/fast movement, and add ender upgrade system that allows villagers to use ender pearls for teleportation
+
+**Tasks**:
+- [ ] Analyze current villager pathfinding system
+  - [ ] Review `VillagerPathfindingSystem.java` implementation
+  - [ ] Identify areas where villagers teleport or move too fast
+  - [ ] Document current pathfinding behavior
+  - [ ] Test villager movement to assigned buildings
+- [ ] Implement pathfinding speed limits
+  - [ ] Create `VillagerMovementController.java` class
+  - [ ] Add method to limit villager movement speed
+    - [ ] Override villager's movement speed when pathfinding to assigned building
+    - [ ] Set maximum speed to normal walking speed (no sprinting)
+    - [ ] Prevent villagers from using fast movement methods
+  - [ ] Disable teleportation for villagers
+    - [ ] Check if villager is trying to teleport (e.g., `Entity.teleport()` calls)
+    - [ ] Intercept teleportation attempts via mixin
+    - [ ] Cancel teleportation unless ender upgrade is active
+  - [ ] Ensure villagers use proper pathfinding
+    - [ ] Force villagers to use `NavigationComponent` for movement
+    - [ ] Prevent direct position setting (teleportation)
+    - [ ] Add validation to ensure villagers follow paths
+- [ ] Create ender upgrade system
+  - [ ] Design ender upgrade item/block
+    - [ ] Option A: Special block that can be placed in settlement (e.g., "Ender Core")
+    - [ ] Option B: Item that can be applied to settlement via UI
+    - [ ] Option C: Building upgrade that can be added to existing buildings
+  - [ ] Create `EnderUpgrade.java` data class
+    - [ ] Add field: `boolean isActive` (whether upgrade is active for settlement)
+    - [ ] Add field: `UUID settlementId` (which settlement has the upgrade)
+    - [ ] Add field: `BlockPos upgradeBlockPos` (position of upgrade block, if using block-based)
+    - [ ] Add field: `int enderPearlCooldown` (ticks between ender pearl uses)
+    - [ ] Implement `toNbt()` and `fromNbt()` methods
+  - [ ] Store ender upgrade data in `Settlement` class
+    - [ ] Add `EnderUpgrade enderUpgrade` field to `Settlement`
+    - [ ] Initialize as null (no upgrade by default)
+    - [ ] Add getter/setter methods
+- [ ] Implement ender upgrade placement/activation
+  - [ ] Create ender upgrade block/item
+    - [ ] If using block: Create `EnderCoreBlock.java` extending `Block`
+    - [ ] If using item: Create `EnderUpgradeItem.java` extending `Item`
+    - [ ] Register block/item in mod initialization
+  - [ ] Implement upgrade activation logic
+    - [ ] Check if player places upgrade block/item in settlement
+    - [ ] Verify settlement doesn't already have upgrade
+    - [ ] Create `EnderUpgrade` instance and store in settlement
+    - [ ] Mark upgrade as active
+    - [ ] Save settlement data
+  - [ ] Add upgrade removal logic
+    - [ ] Allow players to remove upgrade block/item
+    - [ ] Clear upgrade from settlement data
+    - [ ] Mark upgrade as inactive
+- [ ] Implement ender pearl teleportation for villagers
+  - [ ] Create `VillagerEnderTeleportSystem.java` class
+  - [ ] Add method: `canUseEnderTeleport(Settlement, VillagerEntity)`
+    - [ ] Check if settlement has active ender upgrade
+    - [ ] Check if villager is assigned to a building
+    - [ ] Check if ender pearl cooldown has expired
+    - [ ] Return true if all conditions met
+  - [ ] Implement teleportation logic
+    - [ ] When villager needs to go to assigned building/chest
+    - [ ] Check if ender teleport is available
+    - [ ] Calculate target position (building position or chest position)
+    - [ ] Use `Entity.teleport()` to move villager to target
+    - [ ] Play ender pearl teleportation sound/particles
+    - [ ] Set ender pearl cooldown timer
+  - [ ] Add teleportation conditions
+    - [ ] Only teleport to assigned workstations (not random locations)
+    - [ ] Only teleport to chests for deposit tasks
+    - [ ] Check distance: only teleport if distance > 32 blocks (avoid short-range teleports)
+    - [ ] Check if path is blocked (if direct path exists, use normal pathfinding)
+  - [ ] Implement cooldown system
+    - [ ] Track last teleport time per villager
+    - [ ] Default cooldown: 6000 ticks (5 minutes)
+    - [ ] Prevent teleportation if cooldown not expired
+    - [ ] Store cooldown in villager NBT or separate tracking system
+- [ ] Integrate ender teleportation into villager task system
+  - [ ] Modify `VillagerPathfindingSystem` to check for ender upgrade
+    - [ ] When villager is assigned to building, check if ender teleport available
+    - [ ] If available and conditions met, use teleportation instead of pathfinding
+    - [ ] Otherwise, use normal pathfinding
+  - [ ] Modify `VillagerDepositSystem` to use ender teleportation
+    - [ ] When villager needs to deposit items at lectern/chest
+    - [ ] Check if ender teleport available
+    - [ ] Teleport to chest/lectern if conditions met
+    - [ ] Otherwise, use normal pathfinding
+  - [ ] Modify workstation assignment system
+    - [ ] When villager is assigned to workstation in building
+    - [ ] Check if ender teleport available for initial assignment
+    - [ ] Teleport villager to workstation if conditions met
+- [ ] Add visual/audio feedback for ender teleportation
+  - [ ] Play ender pearl teleportation sound when villager teleports
+    - [ ] Use `World.playSound()` with `SoundEvents.ENTITY_ENDERMAN_TELEPORT`
+  - [ ] Spawn ender particles at source and destination
+    - [ ] Use `ParticleTypes.PORTAL` or custom ender particles
+    - [ ] Spawn particles at villager's position before teleport
+    - [ ] Spawn particles at destination after teleport
+  - [ ] Add brief invulnerability after teleport (prevent damage during teleport)
+    - [ ] Set `Entity.invulnerable` flag temporarily
+    - [ ] Remove flag after 1 second
+- [ ] Implement ender pearl item consumption (optional)
+  - [ ] Track ender pearl usage per settlement
+    - [ ] Count how many ender pearls settlement has available
+    - [ ] Store in settlement materials or separate tracking
+  - [ ] Consume ender pearl on teleportation
+    - [ ] When villager teleports, consume 1 ender pearl from settlement storage
+    - [ ] Prevent teleportation if no ender pearls available
+    - [ ] Add ender pearls to settlement materials system
+  - [ ] Add ender pearl collection system
+    - [ ] Allow players to deposit ender pearls into settlement storage
+    - [ ] Display ender pearl count in UI
+    - [ ] Show warning when ender pearls are low
+- [ ] Add UI integration for ender upgrade
+  - [ ] Display ender upgrade status in settlement overview
+    - [ ] Show "Ender Upgrade: Active" or "Ender Upgrade: Not Active"
+    - [ ] Show ender pearl count if using consumption system
+  - [ ] Add ender upgrade activation UI
+    - [ ] Show "Activate Ender Upgrade" button if upgrade not active
+    - [ ] Show upgrade block/item requirement
+    - [ ] On activation, consume upgrade item/block and activate upgrade
+  - [ ] Display teleportation statistics (optional)
+    - [ ] Show number of teleportations used
+    - [ ] Show cooldown status for next teleportation
+- [ ] Add network packet support
+  - [ ] Create `ActivateEnderUpgradePacket.java` for activating upgrade
+    - [ ] Send: Settlement ID, Upgrade Item/Block position
+    - [ ] Server validates and activates upgrade
+    - [ ] Send response packet with success/failure
+  - [ ] Create `DeactivateEnderUpgradePacket.java` for deactivating upgrade
+    - [ ] Send: Settlement ID
+    - [ ] Server deactivates upgrade
+  - [ ] Register packets in network initialization
+- [ ] Add configuration system for ender upgrade
+  - [ ] Create `ender_upgrade_config.json` configuration file
+    - [ ] Define teleportation cooldown (default: 6000 ticks)
+    - [ ] Define minimum teleportation distance (default: 32 blocks)
+    - [ ] Define ender pearl consumption rate (if using consumption)
+    - [ ] Define teleportation sound/particle settings
+  - [ ] Create `EnderUpgradeConfig.java` data class
+    - [ ] Load config from JSON on server start
+    - [ ] Cache config for quick access
+    - [ ] Provide getters for cooldown, distance, consumption rate
+
+**Technical Notes**:
+- **Pathfinding Speed Limits**: Use mixin to intercept `Entity.setVelocity()` or `LivingEntity.travel()` methods
+- **Teleportation Prevention**: Mixin into `Entity.teleport()` to cancel unless ender upgrade active
+- **Ender Teleportation**: Use `Entity.teleport()` method with proper position validation
+- **Cooldown System**: Store cooldown per villager in NBT or separate tracking map
+- **Distance Check**: Only teleport if distance > minimum (avoid unnecessary teleports for short distances)
+- **Path Blocking Check**: Use `World.raycast()` to check if direct path exists before teleporting
+- **Performance**: Check ender upgrade status when needed, cache in villager data if possible
+- **Visual Feedback**: Use Minecraft's particle and sound systems for teleportation effects
+
+**Data Structures**:
+```java
+EnderUpgrade {
+    boolean isActive
+    UUID settlementId
+    BlockPos upgradeBlockPos        // If using block-based upgrade
+    int enderPearlCooldown         // Ticks between uses
+    long lastTeleportTime          // Per-villager tracking (stored separately)
+    int enderPearlCount           // If using consumption system
+}
+```
+
+**JSON Configuration Format** (`ender_upgrade_config.json`):
+```json
+{
+  "teleportationCooldown": 6000,
+  "minimumTeleportDistance": 32,
+  "enderPearlConsumption": true,
+  "enderPearlConsumptionRate": 1,
+  "playTeleportSound": true,
+  "spawnTeleportParticles": true
+}
+```
+
+### 5.3 Golem Assignment to Wall Stations
+**Goal**: Allow players to assign iron golems to wall stations (similar to villager assignment) for defensive purposes
+
+**Tasks**:
+- [ ] Create golem tracking system
+  - [ ] Add golem detection to settlement scanning
+    - [ ] Extend `VillagerTracker` or create `GolemTracker.java` class
+    - [ ] Scan for `EntityType.IRON_GOLEM` within settlement radius
+    - [ ] Use `World.getEntitiesByType(EntityType.IRON_GOLEM, boundingBox, predicate)` for efficient scanning
+    - [ ] Filter golems by distance from settlement center (lectern position)
+    - [ ] Calculate distance using `BlockPos.getSquaredDistance()`
+  - [ ] Create `GolemData` class
+    - [ ] Add fields: `UUID entityId`, `BlockPos lastKnownPos`, `long lastSeen` timestamp
+    - [ ] Add field: `UUID assignedWallStationId` (wall building this golem is assigned to, null if unassigned)
+    - [ ] Add field: `String name` (from golem's custom name or generated)
+    - [ ] Implement `toNbt()` and `fromNbt()` methods
+    - [ ] Add `equals()` and `hashCode()` based on entityId
+  - [ ] Add golem list to `Settlement` class
+    - [ ] Add `List<GolemData> golems` field
+    - [ ] Update NBT serialization to include golems
+    - [ ] Initialize empty list in constructor
+  - [ ] Implement periodic golem scanning
+    - [ ] Add golem scanning to `VillagerScanningSystem` or create separate `GolemScanningSystem`
+    - [ ] Scan all settlements in rotation (one per 10 ticks to spread load)
+    - [ ] Update settlement's golem list with scan results
+    - [ ] Update `lastSeen` timestamp on each scan
+    - [ ] Remove golems not seen for extended period (60 seconds)
+- [ ] Implement wall station detection
+  - [ ] Create `WallStationDetector.java` utility class
+    - [ ] Add method: `findWallStations(Settlement, ServerWorld)`
+    - [ ] Scan for buildings with structure type containing "wall" in name
+    - [ ] Use `StructureData` to identify wall structures
+    - [ ] Return list of wall building IDs and positions
+  - [ ] Add wall station position tracking to building data
+    - [ ] Store wall station positions in building NBT (if needed for pathfinding)
+    - [ ] Calculate wall station positions from structure data
+- [ ] Create golem assignment system
+  - [ ] Create `GolemAssignmentManager.java` class
+    - [ ] Add method: `assignGolemToWallStation(Settlement, UUID golemId, UUID buildingId)`
+      - [ ] Validate golem exists in settlement
+      - [ ] Validate building is a wall structure
+      - [ ] Check if golem is already assigned
+      - [ ] Set `assignedWallStationId` in `GolemData`
+      - [ ] Save settlement data
+      - [ ] Return success/failure
+    - [ ] Add method: `unassignGolem(Settlement, UUID golemId)`
+      - [ ] Find golem in settlement
+      - [ ] Clear `assignedWallStationId`
+      - [ ] Save settlement data
+      - [ ] Return success/failure
+    - [ ] Add method: `getGolemsAssignedToWallStation(Settlement, UUID buildingId)`
+      - [ ] Filter golems by `assignedWallStationId`
+      - [ ] Return list of assigned golems
+  - [ ] Add assignment tracking in NBT serialization
+    - [ ] Save `assignedWallStationId` in `GolemData.toNbt()`
+    - [ ] Load assignment in `GolemData.fromNbt()`
+- [ ] Implement golem pathfinding to wall stations
+  - [ ] Create `GolemPathfindingSystem.java` class
+    - [ ] Add method: `processGolemPathfinding(Settlement, ServerWorld)`
+    - [ ] Iterate through all assigned golems in settlement
+    - [ ] For each assigned golem:
+      - [ ] Find golem entity by UUID
+      - [ ] Find assigned wall building
+      - [ ] Calculate target position (wall station position or building center)
+      - [ ] Use golem's navigation component to pathfind to target
+      - [ ] Set golem's target position using `NavigationComponent.startMovingTo()`
+    - [ ] Handle golem not found (despawned/removed)
+      - [ ] Unassign golem from wall station
+      - [ ] Remove from settlement golem list
+  - [ ] Add periodic pathfinding updates
+    - [ ] Run pathfinding every 5-10 seconds (100-200 ticks)
+    - [ ] Use tick counter to avoid processing every tick
+    - [ ] Process golems in rotation (one per 10 ticks to spread load)
+- [ ] Create network packet for golem assignment
+  - [ ] Create `AssignGolemPacket.java` for network communication
+    - [ ] Add fields: `UUID settlementId`, `UUID golemId`, `UUID buildingId` (null to unassign)
+    - [ ] Client sends assignment request
+    - [ ] Server validates and assigns/unassigns golem
+    - [ ] Server sends response packet with success/failure
+  - [ ] Register packet in network initialization
+    - [ ] Add packet to `SettlementsMod` network registration
+    - [ ] Handle packet on server side
+- [ ] Add UI integration for golem assignment
+  - [ ] Display golem list in Villagers tab (or create separate Golems tab)
+    - [ ] Create `GolemListWidget.java` extending `AlwaysSelectedEntryListWidget`
+    - [ ] Implement list entry class `GolemListEntry`
+    - [ ] Display golem name (or "Unnamed Golem")
+    - [ ] Display assigned wall station (or "No assignment")
+    - [ ] Show golem position (optional, for debugging)
+  - [ ] Add "Assign to Wall Station" button
+    - [ ] Show button for unassigned golems
+    - [ ] Create building selection dialog (filter to show only wall buildings)
+    - [ ] On selection, send `AssignGolemPacket` to server
+    - [ ] Update UI with assignment status
+  - [ ] Add "Unassign" button
+    - [ ] Show button for assigned golems
+    - [ ] On click, send unassignment packet
+    - [ ] Update UI to show unassigned status
+  - [ ] Add golem refresh functionality
+    - [ ] Add "Refresh List" button
+    - [ ] Trigger golem scan immediately
+    - [ ] Update list with latest golem data
+- [ ] Implement golem defensive behavior (optional enhancement)
+  - [ ] Create `GolemDefenseSystem.java` class
+    - [ ] Monitor assigned golems for hostile mobs near wall stations
+    - [ ] When hostile mob detected, ensure golem targets it
+    - [ ] Use golem's existing attack AI (no custom AI needed)
+  - [ ] Add periodic hostile mob scanning near wall stations
+    - [ ] Scan for hostile mobs within 16 blocks of wall station
+    - [ ] If hostile mob found, alert assigned golem
+    - [ ] Golem will naturally attack hostile mobs (vanilla behavior)
+
+**Technical Notes**:
+- **Golem Detection**: Use same scanning pattern as villager detection (AABB bounding box, distance filtering)
+- **Wall Station Identification**: Use building structure type name to identify walls (contains "wall" substring)
+- **Pathfinding**: Use golem's existing `NavigationComponent` - no custom pathfinding needed
+- **Assignment Storage**: Store assignment in `GolemData` and persist in settlement NBT
+- **Performance**: Scan golems every 5-10 seconds, process pathfinding in rotation to spread load
+- **Golem Behavior**: Iron golems already have defensive AI - assignment mainly controls their patrol area
+
+**Data Structures**:
+```java
+GolemData {
+    UUID entityId
+    BlockPos lastKnownPos
+    long lastSeen
+    UUID assignedWallStationId  // null if unassigned
+    String name
+}
+
+GolemAssignmentManager {
+    assignGolemToWallStation(Settlement, UUID, UUID) -> boolean
+    unassignGolem(Settlement, UUID) -> boolean
+    getGolemsAssignedToWallStation(Settlement, UUID) -> List<GolemData>
+}
+```
+
+---
+
+### 5.4 Road and Path Placement System
+**Goal**: Allow unassigned villagers to automatically place roads/paths connecting buildings and place fence light posts in dark areas, matching vanilla village path placement quality
+
+**⚠️ STATUS: BUGGY - COMMENTED OUT**
+- Road placement system is currently disabled due to bugs
+- Issues: Grid pathfinding fails on uneven terrain, villagers place paths incorrectly near doors/stairs
+- Code is commented out in `RoadPlacementSystem.java` and `RoadPlacementTickSystem.java`
+- Logging is also commented out to reduce log spam
+- Needs more work before re-enabling
+
+**Tasks**:
+- [ ] Create road placement detection system
+  - [ ] Create `RoadPlacementSystem.java` class
+    - [ ] Add method: `processRoadPlacement(Settlement, ServerWorld)`
+    - [ ] Get all unassigned employed villagers in settlement
+    - [ ] For each unassigned villager:
+      - [ ] Check if villager should place roads (not assigned to building)
+      - [ ] Find nearby buildings and existing roads
+      - [ ] Calculate path from building doors to nearest road
+      - [ ] Place path blocks along calculated route
+  - [ ] Implement building door detection
+    - [ ] Create `BuildingDoorDetector.java` utility class
+    - [ ] Scan building structure for door blocks (`BlockState` contains door properties)
+    - [ ] Use `StructureData` to find door positions in structure
+    - [ ] Account for structure rotation when calculating world positions
+    - [ ] Return list of door positions for each building
+  - [ ] Implement existing road detection
+    - [ ] Create `RoadDetector.java` utility class
+    - [ ] Scan for path blocks (`Blocks.DIRT_PATH`, `Blocks.GRASS_BLOCK` with path overlay)
+    - [ ] Check blocks within settlement radius
+    - [ ] Build graph of connected road segments
+    - [ ] Return road network data structure
+- [ ] Implement intelligent path placement algorithm
+  - [ ] Study vanilla village path placement logic
+    - [ ] Review `VillageGenerator` or `VillagePieces` classes in Minecraft source
+    - [ ] Understand vanilla pathfinding algorithm for paths
+    - [ ] Document key principles: shortest path, avoiding obstacles, connecting doors to roads
+  - [ ] Create `PathPlacementCalculator.java` class
+    - [ ] Add method: `calculatePath(BlockPos start, BlockPos end, ServerWorld)`
+      - [ ] Use A* pathfinding algorithm (similar to vanilla)
+      - [ ] Consider terrain obstacles (water, lava, walls)
+      - [ ] Prefer existing paths when possible
+      - [ ] Calculate shortest valid route
+      - [ ] Return list of BlockPos positions for path placement
+    - [ ] Add method: `findNearestRoad(BlockPos, ServerWorld, Settlement)`
+      - [ ] Scan for existing path blocks within 32 blocks
+      - [ ] Return nearest road position
+      - [ ] If no road found, return null (villager will create new road segment)
+  - [ ] Implement path placement logic
+    - [ ] For each building door:
+      - [ ] Find nearest existing road (if any)
+      - [ ] Calculate path from door to road
+      - [ ] Place path blocks along calculated route
+      - [ ] Use `World.setBlockState()` to place `Blocks.DIRT_PATH`
+    - [ ] Handle multiple doors per building
+      - [ ] Connect all doors to nearest road
+      - [ ] Merge paths if multiple doors lead to same road
+  - [ ] Add path block validation
+    - [ ] Check if block can be replaced (air, grass, dirt, etc.)
+    - [ ] Don't replace existing structures or important blocks
+    - [ ] Validate placement is within settlement bounds
+    - [ ] Check if block is suitable for path (not water, lava, etc.)
+- [ ] Implement fence light post placement
+  - [ ] Create `LightPostPlacementSystem.java` class
+    - [ ] Add method: `findDarkAreas(Settlement, ServerWorld)`
+      - [ ] Scan settlement area for blocks with light level < 7
+      - [ ] Filter to areas near roads (within 8 blocks of path)
+      - [ ] Return list of dark positions near roads
+    - [ ] Add method: `shouldPlaceLightPost(BlockPos, ServerWorld)`
+      - [ ] Check light level at position (must be < 7)
+      - [ ] Check if position is near road (within 8 blocks)
+      - [ ] Check if light post already exists nearby (within 4 blocks)
+      - [ ] Check if position is suitable (solid block below, air above)
+      - [ ] Return true if all conditions met
+  - [ ] Implement light post structure placement
+    - [ ] Create light post structure (fence post with torch/lantern)
+      - [ ] Design: 1-block fence post with torch on top (or lantern)
+      - [ ] Alternative: Use existing fence blocks with torch placement
+    - [ ] Place fence block at calculated position
+      - [ ] Use `Blocks.OAK_FENCE` or configurable fence type
+      - [ ] Place fence post using `World.setBlockState()`
+    - [ ] Place light source on fence
+      - [ ] Place `Blocks.TORCH` or `Blocks.LANTERN` on top of fence
+      - [ ] Use `World.setBlockState()` with proper block state
+    - [ ] Handle different light post designs
+      - [ ] Support torch on fence (simple)
+      - [ ] Support lantern on fence (better light)
+      - [ ] Make design configurable via JSON
+- [ ] Create villager task system for road placement
+  - [ ] Create `VillagerRoadPlacementTask.java` class
+    - [ ] Extend or integrate with existing `TaskExecutionSystem`
+    - [ ] Add task type: `ROAD_PLACEMENT`
+    - [ ] Assign task to unassigned villagers
+  - [ ] Implement task execution logic
+    - [ ] Villager selects nearest building without road connection
+    - [ ] Villager calculates path from building door to road
+    - [ ] Villager places path blocks one at a time (walking along route)
+    - [ ] Villager places blocks in inventory (if needed) or uses creative placement
+    - [ ] Villager moves to next block position
+    - [ ] Repeat until path is complete
+  - [ ] Add task scheduling
+    - [ ] Assign road placement tasks every 200 ticks (10 seconds)
+    - [ ] Limit to 1-2 villagers working on roads at a time (per settlement)
+    - [ ] Prioritize buildings without road connections
+    - [ ] Skip if no unassigned villagers available
+- [ ] Create villager task system for light post placement
+  - [ ] Create `VillagerLightPostPlacementTask.java` class
+    - [ ] Add task type: `LIGHT_POST_PLACEMENT`
+    - [ ] Assign task to unassigned villagers (different from road placement)
+  - [ ] Implement task execution logic
+    - [ ] Villager finds nearest dark area near road
+    - [ ] Villager pathfinds to dark area
+    - [ ] Villager places fence block
+    - [ ] Villager places torch/lantern on fence
+    - [ ] Villager moves to next dark area
+    - [ ] Repeat until all dark areas are lit (or task timeout)
+  - [ ] Add task scheduling
+    - [ ] Assign light post tasks every 400 ticks (20 seconds) - less frequent than roads
+    - [ ] Limit to 1 villager working on light posts at a time (per settlement)
+    - [ ] Only assign if dark areas detected
+    - [ ] Skip if no unassigned villagers available
+- [ ] Implement material management for road/light placement
+  - [ ] Add path block materials to settlement storage
+    - [ ] Track dirt/grass blocks for path placement
+    - [ ] Villagers use settlement materials for path blocks
+    - [ ] Consume materials when placing paths
+  - [ ] Add light post materials to settlement storage
+    - [ ] Track fence blocks and torches/lanterns
+    - [ ] Villagers use settlement materials for light posts
+    - [ ] Consume materials when placing light posts
+  - [ ] Handle material shortages
+    - [ ] If materials insufficient, skip road/light placement
+    - [ ] Log warning when materials run low
+    - [ ] Display material requirements in UI (optional)
+- [ ] Add configuration system for road placement
+  - [ ] Create `road_placement_config.json` configuration file
+    - [ ] Define path block type (default: `minecraft:dirt_path`)
+    - [ ] Define maximum path distance from building (default: 64 blocks)
+    - [ ] Define path placement interval (default: 200 ticks)
+    - [ ] Define maximum villagers working on roads (default: 2)
+    - [ ] Define light post placement interval (default: 400 ticks)
+    - [ ] Define light post materials (fence type, light source type)
+    - [ ] Define dark area detection radius (default: 8 blocks from road)
+  - [ ] Create `RoadPlacementConfig.java` data class
+    - [ ] Load config from JSON on server start
+    - [ ] Cache config for quick access
+    - [ ] Provide getters for all configuration values
+- [ ] Add UI integration (optional enhancement)
+  - [ ] Display road network visualization in Buildings tab
+    - [ ] Show connected buildings (green) vs unconnected (red)
+    - [ ] Display road placement progress
+  - [ ] Display light post statistics
+    - [ ] Show number of light posts placed
+    - [ ] Show dark areas remaining
+  - [ ] Add toggle to enable/disable road placement
+    - [ ] Add setting in Settings tab
+    - [ ] Allow players to disable automatic road placement
+- [ ] Add network packet support (if UI features added)
+  - [ ] Create `RoadPlacementStatusPacket.java` for syncing road status to client
+    - [ ] Send: List of connected buildings, road positions, light post positions
+    - [ ] Update client UI with road network data
+  - [ ] Register packet in network initialization
+
+**Technical Notes**:
+- **Vanilla Path Placement**: Study `VillageGenerator` or similar classes to understand vanilla pathfinding algorithm
+- **Pathfinding Algorithm**: Use A* pathfinding similar to vanilla (shortest path, obstacle avoidance)
+- **Road Detection**: Scan for `Blocks.DIRT_PATH` and grass blocks with path texture
+- **Light Level Detection**: Use `World.getLightLevel()` to check block light level (must be < 7 for dark)
+- **Material Consumption**: Villagers consume materials from settlement storage when placing blocks
+- **Task Scheduling**: Use existing `TaskExecutionSystem` or create parallel system for road/light tasks
+- **Performance**: Limit road/light placement to 1-2 villagers per settlement, process in rotation
+- **Path Quality**: Match vanilla village path placement - shortest route, avoid obstacles, connect doors to roads
+
+**Data Structures**:
+```java
+RoadPlacementSystem {
+    processRoadPlacement(Settlement, ServerWorld) -> void
+    calculatePath(BlockPos, BlockPos, ServerWorld) -> List<BlockPos>
+    findNearestRoad(BlockPos, ServerWorld, Settlement) -> BlockPos
+}
+
+LightPostPlacementSystem {
+    findDarkAreas(Settlement, ServerWorld) -> List<BlockPos>
+    shouldPlaceLightPost(BlockPos, ServerWorld) -> boolean
+    placeLightPost(BlockPos, ServerWorld) -> void
+}
+
+RoadPlacementConfig {
+    String pathBlockType
+    int maxPathDistance
+    int pathPlacementInterval
+    int maxRoadWorkers
+    int lightPostPlacementInterval
+    String fenceType
+    String lightSourceType
+    int darkAreaDetectionRadius
+}
+```
+
+**JSON Configuration Format** (`road_placement_config.json`):
+```json
+{
+  "pathBlockType": "minecraft:dirt_path",
+  "maxPathDistance": 64,
+  "pathPlacementInterval": 200,
+  "maxRoadWorkers": 2,
+  "lightPostPlacementInterval": 400,
+  "fenceType": "minecraft:oak_fence",
+  "lightSourceType": "minecraft:torch",
+  "darkAreaDetectionRadius": 8
+}
+```
+
+---
+
 ## Technical Architecture
 
 ### Key Classes
@@ -1478,7 +2208,50 @@ src/main/
 
 ### Recommended Next Steps
 
-#### Priority 1: Performance Optimizations (Building Output Widget)
+#### Priority 1: Phase 5.1 - Town Hall Building System
+1. [ ] **Create town hall structure and detection**
+   - [ ] Design and create `lvl1_town_hall.nbt` structure file
+   - [ ] Implement town hall detection system
+   - [ ] Add lectern-in-town-hall detection
+
+2. [ ] **Implement librarian assignment**
+   - [ ] Create `TownHallData` and `TownHallLibrarianManager` classes
+   - [ ] Implement librarian assignment/unassignment logic
+   - [ ] Add UI integration for librarian assignment
+
+3. [ ] **Implement passive villager spawning**
+   - [ ] Create `TownHallVillagerSpawner` class
+   - [ ] Implement spawn logic with cap and interval system
+   - [ ] Add configuration system for spawn rates
+
+4. [ ] **Implement wandering trader enhancements**
+   - [ ] Create `WanderingTraderSpawnEnhancer` class
+   - [ ] Implement spawn rate multiplier system
+   - [ ] Add wandering trader despawn/leave system
+
+#### Priority 2: Phase 5.2 - Villager Pathfinding Improvements & Ender Upgrade
+1. [ ] **Fix villager pathfinding issues**
+   - [ ] Analyze current pathfinding system
+   - [ ] Implement speed limits and teleportation prevention
+   - [ ] Ensure villagers use proper pathfinding
+
+2. [ ] **Create ender upgrade system**
+   - [ ] Design and implement ender upgrade block/item
+   - [ ] Create `EnderUpgrade` data class and storage
+   - [ ] Implement upgrade activation/removal logic
+
+3. [ ] **Implement ender pearl teleportation**
+   - [ ] Create `VillagerEnderTeleportSystem` class
+   - [ ] Implement teleportation logic with cooldown system
+   - [ ] Integrate into villager task and deposit systems
+   - [ ] Add visual/audio feedback
+
+4. [ ] **Add UI and configuration**
+   - [ ] Add ender upgrade status to settlement UI
+   - [ ] Create configuration system for teleportation settings
+   - [ ] Add network packet support
+
+#### Priority 3: Performance Optimizations (Building Output Widget)
 1. [ ] **Cache crop statistics on server**
    - [ ] Create `CropStatisticsCache` class
    - [ ] Update cache every 10-20 seconds instead of on every packet request

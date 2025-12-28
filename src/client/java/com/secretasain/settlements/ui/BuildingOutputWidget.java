@@ -66,14 +66,16 @@ public class BuildingOutputWidget extends AlwaysSelectedEntryListWidget<Building
      * Updates widget with data received from server.
      */
     public void updateWithServerData(List<BuildingOutputConfig.OutputEntry> outputs, int farmlandCount) {
-        updateWithServerData(outputs, farmlandCount, null);
+        updateWithServerData(outputs, farmlandCount, null, 0);
     }
     
+    private int serverBoneMealProduced = 0;
+    
     /**
-     * Updates widget with data received from server (with crop statistics).
+     * Updates widget with data received from server (with crop statistics and bone meal).
      */
     public void updateWithServerData(List<BuildingOutputConfig.OutputEntry> outputs, int farmlandCount, 
-                                     List<CropStatistics> cropStats) {
+                                     List<CropStatistics> cropStats, int boneMealProduced) {
         com.secretasain.settlements.SettlementsMod.LOGGER.info("BuildingOutputWidget.updateWithServerData: buildingType={}, outputs={}, farmlandCount={}, cropStats={}, hasServerData={}", 
             buildingType, outputs != null ? outputs.size() : "null", farmlandCount, 
             cropStats != null ? cropStats.size() : "null", hasServerData);
@@ -85,6 +87,7 @@ public class BuildingOutputWidget extends AlwaysSelectedEntryListWidget<Building
         this.outputEntries = outputs;
         this.serverFarmlandCount = farmlandCount;
         this.serverCropStats = cropStats;
+        this.serverBoneMealProduced = boneMealProduced;
         this.hasServerData = true;
         
         // If empty response (no villagers), set a flag to show "No villagers assigned" message
@@ -220,6 +223,17 @@ public class BuildingOutputWidget extends AlwaysSelectedEntryListWidget<Building
         // Show farmland count
         this.addEntry(new OutputEntry(null, 0, 0, 0, 0.0, 
             String.format("Farmland plots: %d", farmlandCount)));
+        
+        // Show bone meal production if second villager is assigned
+        if (hasServerData && serverBoneMealProduced > 0) {
+            net.minecraft.item.Item boneMealItem = net.minecraft.item.Items.BONE_MEAL;
+            this.addEntry(new OutputEntry(
+                boneMealItem,
+                0, 0, serverBoneMealProduced,
+                0.0,
+                String.format("Bone Meal: %d (from composter)", serverBoneMealProduced)
+            ));
+        }
         
         // Show crop statistics if available from server
         if (hasServerData && serverCropStats != null && !serverCropStats.isEmpty()) {

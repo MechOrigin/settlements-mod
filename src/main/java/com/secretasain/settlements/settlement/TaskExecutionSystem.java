@@ -18,6 +18,7 @@ import java.util.*;
 public class TaskExecutionSystem {
     private static final int TASK_INTERVAL_TICKS = 200; // Execute tasks every 2.5 seconds (50 ticks)
     private static final double WORK_DISTANCE_SQ = 16.0 * 16.0; // Villager must be within 16 blocks to work
+    private static final double LUMBERYARD_WORK_DISTANCE_SQ = 32.0 * 32.0; // Lumberyard villagers can work within 32 blocks (for tree harvesting)
     
     /**
      * Registers the task execution system with Fabric's server tick events.
@@ -94,13 +95,51 @@ public class TaskExecutionSystem {
                 buildingPos.getZ() + 0.5
             );
             
-            if (distanceSq > WORK_DISTANCE_SQ) {
+            // Determine building type to check work distance
+            Identifier structureType = building.getStructureType();
+            String structureName = getStructureName(structureType);
+            String buildingType = determineBuildingType(structureName);
+            boolean isLumberyard = "lumberyard".equals(buildingType);
+            
+            // Use larger work distance for lumberyard buildings
+            double workDistanceSq = isLumberyard ? LUMBERYARD_WORK_DISTANCE_SQ : WORK_DISTANCE_SQ;
+            
+            if (distanceSq > workDistanceSq) {
                 continue; // Villager is too far from building to work
             }
             
             // Skip if villager is currently depositing (let deposit system handle it)
             if (villagerData.isDepositing()) {
                 continue;
+            }
+            
+            // For lumberyard buildings, only the first villager (index 0) should harvest logs
+            // The second villager (index 1) is handled by LumberyardItemCollectorSystem
+            if (isLumberyard) {
+                // Get all villagers assigned to this building
+                List<VillagerData> assignedVillagers = WorkAssignmentManager.getVillagersAssignedToBuilding(
+                    settlement, building.getId()
+                );
+                
+                // Find this villager's index
+                int villagerIndex = -1;
+                for (int i = 0; i < assignedVillagers.size(); i++) {
+                    if (assignedVillagers.get(i).getEntityId().equals(villagerData.getEntityId())) {
+                        villagerIndex = i;
+                        break;
+                    }
+                }
+                
+                // Only first villager (index 0) should harvest logs
+                // Second villager (index 1) is handled by LumberyardItemCollectorSystem
+                if (villagerIndex != 0) {
+                    continue; // Skip non-first villagers for lumberyard
+                }
+                
+                // Also check if first villager is actively working (shouldn't happen, but just in case)
+                if (LumberyardItemCollectorSystem.isVillagerActivelyWorking(villagerData.getEntityId())) {
+                    continue; // Let item collector system handle it
+                }
             }
             
             // Execute task based on building type
@@ -130,6 +169,14 @@ public class TaskExecutionSystem {
             MinecraftServer server = world.getServer();
             if (server != null) {
                 outputs = FarmCropHarvester.harvestCrops(building, world, server);
+            } else {
+                outputs = new java.util.ArrayList<>();
+            }
+        } else if ("lumberyard".equals(buildingType)) {
+            // For lumberyard buildings, use active log harvesting
+            MinecraftServer server = world.getServer();
+            if (server != null) {
+                outputs = LumberjackLogHarvester.harvestLogs(building, world, server);
             } else {
                 outputs = new java.util.ArrayList<>();
             }
@@ -183,6 +230,9 @@ public class TaskExecutionSystem {
             return "smithing";
         } else if (structureName.contains("farm") || structureName.contains("farmland")) {
             return "farm";
+        } else if (structureName.contains("lumber") || structureName.contains("lumberyard") || 
+                   structureName.contains("lumber_jack") || structureName.contains("lumberjack")) {
+            return "lumberyard";
         } else if (structureName.contains("cartographer") || structureName.contains("cartography")) {
             return "cartographer";
         } else if (structureName.contains("house")) {

@@ -24,6 +24,7 @@ public class VillagerDepositSystem {
     private static final int DEPOSIT_THRESHOLD = 32; // Items needed to trigger deposit
     private static final double LECTERN_SEARCH_RADIUS = 8.0; // Search for chests within 8 blocks of lectern
     private static final double DEPOSIT_COMPLETE_DISTANCE = 3.0; // Consider deposit complete when within 3 blocks
+    private static final int MIN_CHEST_STAY_TICKS = 100; // Minimum 5 seconds (100 ticks) at chest before returning
     
     /**
      * Registers the deposit system with Fabric's server tick events.
@@ -90,17 +91,22 @@ public class VillagerDepositSystem {
         // Mark villager as depositing (this disables auto-rally in VillagerPathfindingSystem)
         villagerData.setDepositing(true);
         
-        // Pathfind to lectern
+        // Reset chest arrival time
+        villagerData.setChestArrivalTime(0);
+        
+        // Pathfind to lectern - MUST walk (speed 1.0 = normal walking speed)
         boolean pathStarted = villager.getNavigation().startMovingTo(
             lecternPos.getX() + 0.5,
             lecternPos.getY() + 0.5,
             lecternPos.getZ() + 0.5,
-            1.0 // Normal speed
+            1.0 // Normal walking speed - NO teleporting, NO running, NO flying
         );
         
         if (pathStarted) {
-            SettlementsMod.LOGGER.info("Villager {} started deposit trip to lectern at {} ({} items)", 
+            SettlementsMod.LOGGER.info("Villager {} started deposit trip to lectern at {} ({} items) - walking", 
                 villagerData.getEntityId(), lecternPos, villagerData.getTotalAccumulatedItems());
+        } else {
+            SettlementsMod.LOGGER.warn("Villager {} failed to start pathfinding to lectern", villagerData.getEntityId());
         }
         
         SettlementManager.getInstance(world).markDirty();
@@ -121,35 +127,66 @@ public class VillagerDepositSystem {
         );
         
         if (distanceSq <= DEPOSIT_COMPLETE_DISTANCE * DEPOSIT_COMPLETE_DISTANCE) {
-            // Villager is at lectern, deposit items into nearby chests
+            // Villager is at lectern/chest
+            long currentTime = world.getTime();
+            long arrivalTime = villagerData.getChestArrivalTime();
+            
+            // If just arrived, record arrival time
+            if (arrivalTime == 0) {
+                villagerData.setChestArrivalTime(currentTime);
+                SettlementsMod.LOGGER.info("Villager {} arrived at chest at time {}", villagerData.getEntityId(), currentTime);
+                SettlementManager.getInstance(world).markDirty();
+                return; // Wait for next tick
+            }
+            
+            // Check if villager has been at chest long enough (minimum 5 seconds)
+            long timeAtChest = currentTime - arrivalTime;
+            if (timeAtChest < MIN_CHEST_STAY_TICKS) {
+                // Still need to wait - villager must stay at chest
+                SettlementsMod.LOGGER.debug("Villager {} at chest, waiting... ({}/{})", 
+                    villagerData.getEntityId(), timeAtChest, MIN_CHEST_STAY_TICKS);
+                return; // Continue waiting
+            }
+            
+            // Villager has been at chest long enough - deposit items
             boolean deposited = depositItemsToChests(settlement, villagerData, lecternPos, world);
             
             if (deposited) {
                 // Clear accumulated items and stop depositing
                 villagerData.clearAccumulatedItems();
                 villagerData.setDepositing(false);
+                villagerData.setChestArrivalTime(0);
                 SettlementManager.getInstance(world).markDirty();
                 
-                SettlementsMod.LOGGER.info("Villager {} completed deposit trip", villagerData.getEntityId());
+                SettlementsMod.LOGGER.info("Villager {} completed deposit trip after {} ticks at chest", 
+                    villagerData.getEntityId(), timeAtChest);
             } else {
                 // No chests found, but clear items anyway (they're "deposited" to settlement storage)
                 // This prevents villagers from getting stuck if no chests are placed
                 depositItemsToSettlementStorage(settlement, villagerData, world);
                 villagerData.clearAccumulatedItems();
                 villagerData.setDepositing(false);
+                villagerData.setChestArrivalTime(0);
                 SettlementManager.getInstance(world).markDirty();
                 
-                SettlementsMod.LOGGER.info("Villager {} deposited items to settlement storage (no chests found)", 
-                    villagerData.getEntityId());
+                SettlementsMod.LOGGER.info("Villager {} deposited items to settlement storage (no chests found) after {} ticks", 
+                    villagerData.getEntityId(), timeAtChest);
             }
         } else {
-            // Continue pathfinding to lectern - keep trying until they reach it
-            villager.getNavigation().startMovingTo(
-                lecternPos.getX() + 0.5,
-                lecternPos.getY() + 0.5,
-                lecternPos.getZ() + 0.5,
-                1.0
-            );
+            // Continue pathfinding to lectern - MUST walk (speed 1.0)
+            // Check if navigation is still active, restart if needed
+            if (!villager.getNavigation().isFollowingPath()) {
+                boolean pathStarted = villager.getNavigation().startMovingTo(
+                    lecternPos.getX() + 0.5,
+                    lecternPos.getY() + 0.5,
+                    lecternPos.getZ() + 0.5,
+                    1.0 // Normal walking speed - NO teleporting, NO running, NO flying
+                );
+                if (!pathStarted) {
+                    SettlementsMod.LOGGER.debug("Villager {} pathfinding to lectern interrupted, restarting...", 
+                        villagerData.getEntityId());
+                }
+            }
         }
     }
     

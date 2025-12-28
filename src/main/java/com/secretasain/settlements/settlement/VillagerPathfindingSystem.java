@@ -17,6 +17,8 @@ public class VillagerPathfindingSystem {
     private static final int PATHFINDING_INTERVAL_TICKS = 20; // Update pathfinding every 1 second (20 ticks)
     private static final double WORK_RADIUS = 8.0; // Villagers must stay within 8 blocks of their building
     private static final double WORK_RADIUS_SQ = WORK_RADIUS * WORK_RADIUS; // Squared distance for comparison
+    private static final double LUMBERYARD_WORK_RADIUS = 32.0; // Lumberyard villagers can work within 32 blocks (for tree harvesting)
+    private static final double LUMBERYARD_WORK_RADIUS_SQ = LUMBERYARD_WORK_RADIUS * LUMBERYARD_WORK_RADIUS;
     
     /**
      * Registers the pathfinding system with Fabric's server tick events.
@@ -61,6 +63,11 @@ public class VillagerPathfindingSystem {
                 continue;
             }
             
+            // Skip pathfinding if villager is doing composter task (let composter system handle movement)
+            if (com.secretasain.settlements.farm.FarmComposterSystem.isVillagerDoingComposterTask(villagerData.getEntityId())) {
+                continue;
+            }
+            
             UUID buildingId = villagerData.getAssignedBuildingId();
             if (buildingId == null) {
                 continue;
@@ -85,6 +92,16 @@ public class VillagerPathfindingSystem {
                 continue;
             }
             
+            // Check if this is a lumberyard building
+            boolean isLumberyard = isLumberyardBuilding(building);
+            
+            // Skip pathfinding if lumberyard villager is actively working (harvesting trees or collecting items)
+            if (isLumberyard) {
+                if (isLumberyardVillagerActivelyWorking(villagerData.getEntityId())) {
+                    continue; // Let them work without interruption
+                }
+            }
+            
             // Get the actual villager entity
             VillagerEntity villager = getVillagerEntity(world, villagerData.getEntityId());
             if (villager == null) {
@@ -102,8 +119,11 @@ public class VillagerPathfindingSystem {
                 targetPos.getZ() + 0.5
             );
             
+            // Use larger radius for lumberyard buildings
+            double workRadiusSq = isLumberyard ? LUMBERYARD_WORK_RADIUS_SQ : WORK_RADIUS_SQ;
+            
             // Always enforce radius - if villager is outside the work radius, pathfind back
-            if (distanceSq > WORK_RADIUS_SQ) {
+            if (distanceSq > workRadiusSq) {
                 // Villager is outside work radius, pathfind back to building
                 boolean pathStarted = villager.getNavigation().startMovingTo(
                     targetPos.getX() + 0.5,
@@ -118,12 +138,22 @@ public class VillagerPathfindingSystem {
                 } else {
                     // If pathfinding failed, try to teleport them closer (last resort)
                     // This prevents villagers from getting stuck
-                    if (distanceSq > WORK_RADIUS_SQ * 4) { // Only if very far away (more than 2x radius)
+                    // BUT: Only allow teleportation if ender upgrade is active
+                    double maxRadiusSq = isLumberyard ? LUMBERYARD_WORK_RADIUS_SQ * 4 : WORK_RADIUS_SQ * 4;
+                    if (distanceSq > maxRadiusSq) { // Only if very far away (more than 2x radius)
                         BlockPos safePos = findSafePositionNearBuilding(buildingPos, world);
                         if (safePos != null) {
-                            villager.teleport(safePos.getX() + 0.5, safePos.getY() + 0.5, safePos.getZ() + 0.5);
-                            SettlementsMod.LOGGER.info("Teleported villager {} back to building area (was {} blocks away)", 
-                                villagerData.getEntityId(), Math.sqrt(distanceSq));
+                            // Use safe teleport which checks for ender upgrade
+                            boolean teleported = com.secretasain.settlements.pathfinding.VillagerMovementController.safeTeleport(
+                                world, villager, safePos
+                            );
+                            if (teleported) {
+                                SettlementsMod.LOGGER.info("Teleported villager {} back to building area (was {} blocks away)", 
+                                    villagerData.getEntityId(), Math.sqrt(distanceSq));
+                            } else {
+                                SettlementsMod.LOGGER.debug("Cannot teleport villager {} - no ender upgrade active", 
+                                    villagerData.getEntityId());
+                            }
                         }
                     }
                 }
@@ -178,6 +208,32 @@ public class VillagerPathfindingSystem {
         
         // Fallback: just use building position
         return buildingPos;
+    }
+    
+    /**
+     * Checks if a building is a lumberyard building.
+     */
+    private static boolean isLumberyardBuilding(Building building) {
+        String structureName = building.getStructureType().getPath().toLowerCase();
+        return structureName.contains("lumber") || structureName.contains("lumberyard") ||
+               structureName.contains("lumber_jack") || structureName.contains("lumberjack");
+    }
+    
+    /**
+     * Checks if a lumberyard villager is actively working (harvesting trees or collecting items).
+     */
+    private static boolean isLumberyardVillagerActivelyWorking(UUID villagerId) {
+        // Check if villager is collecting items (second lumberyard villager)
+        if (com.secretasain.settlements.settlement.LumberyardItemCollectorSystem.isVillagerActivelyWorking(villagerId)) {
+            return true;
+        }
+        
+        // Check if villager is harvesting logs (first lumberyard villager)
+        // Note: LumberjackLogHarvester doesn't have a state tracking system,
+        // but we can check if the villager has a navigation path to a log location
+        // For now, we'll rely on the item collector check and the increased radius
+        
+        return false;
     }
 }
 

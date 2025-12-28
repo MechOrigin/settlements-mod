@@ -1,0 +1,13 @@
+{
+  "pathBlockType": "minecraft:dirt_path",
+  "maxPathDistance": 64,
+  "pathPlacementInterval": 200,
+  "maxRoadWorkers": 2,
+  "lightPostPlacementInterval": 400,
+  "fenceType": "minecraft:oak_fence",
+  "lightSourceType": "minecraft:torch",
+  "darkAreaDetectionRadius": 8,
+  "darkLightLevel": 7,
+  "lightPostSpacing": 4
+}
+

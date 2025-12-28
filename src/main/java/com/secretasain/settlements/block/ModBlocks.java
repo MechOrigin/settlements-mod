@@ -25,6 +25,12 @@ public class ModBlocks {
     public static final BlockEntityType<GhostBlockEntity> GHOST_BLOCK_ENTITY = 
         FabricBlockEntityTypeBuilder.create(GhostBlockEntity::new, GHOST_BLOCK).build();
     
+    public static final Block ENDER_CORE = new EnderCoreBlock(
+        FabricBlockSettings.copyOf(Blocks.END_STONE)
+            .strength(3.0f, 3.0f)
+            .luminance(15) // Glowing block
+    );
+    
     /**
      * Registers all blocks and block entities.
      */
@@ -34,7 +40,9 @@ public class ModBlocks {
             new Identifier(SettlementsMod.MOD_ID, "ghost_block_entity"), 
             GHOST_BLOCK_ENTITY);
         
-        SettlementsMod.LOGGER.info("Registered ghost block and block entity");
+        Registry.register(Registries.BLOCK, new Identifier(SettlementsMod.MOD_ID, "ender_core"), ENDER_CORE);
+        
+        SettlementsMod.LOGGER.info("Registered ghost block, ender core, and block entity");
     }
 }
 

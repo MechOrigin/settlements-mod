@@ -326,6 +326,23 @@ public class BuildingListWidget extends AlwaysSelectedEntryListWidget<BuildingLi
                 statusColor,
                 false
             );
+            textY += 10;
+            
+            // Check if this is a town hall and show indicator
+            String structurePath = building.getStructureType().getPath();
+            boolean isTownHall = structurePath.contains("town_hall") || structurePath.contains("townhall");
+            if (isTownHall && building.getStatus() == BuildingStatus.COMPLETED) {
+                // Show town hall indicator (simple text for now)
+                context.drawText(
+                    client.textRenderer,
+                    Text.literal("🏛️ Town Hall"),
+                    x + 5,
+                    textY,
+                    0xFFD4AF37, // Gold color
+                    false
+                );
+                textY += 10;
+            }
             
             // Calculate button positions (right side)
             // Start button first (left), then delete button (right)

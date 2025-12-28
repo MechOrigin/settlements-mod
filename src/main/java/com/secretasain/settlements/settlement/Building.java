@@ -23,6 +23,7 @@ public class Building {
     private List<BlockPos> barrierPositions; // Positions where barrier blocks are placed
     private List<BlockPos> ghostBlockPositions; // Positions where ghost blocks are placed
     private int rotation; // Rotation in degrees (0, 90, 180, 270)
+    private NbtCompound customData; // Custom data for building-specific features (town hall, trader hut, etc.)
     
     /**
      * Creates a new building with the given parameters.
@@ -43,6 +44,7 @@ public class Building {
         this.progress = 0.0f;
         this.barrierPositions = new ArrayList<>();
         this.ghostBlockPositions = new ArrayList<>();
+        this.customData = new NbtCompound();
     }
     
     /**
@@ -124,6 +126,13 @@ public class Building {
             }
         }
         
+        // Load custom data if present
+        if (nbt.contains("customData", 10)) { // 10 = NbtCompound
+            building.customData = nbt.getCompound("customData").copy();
+        } else {
+            building.customData = new NbtCompound();
+        }
+        
         return building;
     }
     
@@ -175,6 +184,11 @@ public class Building {
             ghostList.add(posNbt);
         }
         nbt.put("ghostBlockPositions", ghostList);
+        
+        // Save custom data if present
+        if (customData != null && !customData.isEmpty()) {
+            nbt.put("customData", customData);
+        }
         
         return nbt;
     }
@@ -347,6 +361,26 @@ public class Building {
     public void setRotation(int rotation) {
         this.rotation = ((rotation % 360) + 360) % 360; // Normalize
         this.rotation = (this.rotation / 90) * 90; // Snap to 90-degree increments
+    }
+    
+    /**
+     * Gets the custom data for this building.
+     * Used for building-specific features like town hall data, trader hut data, etc.
+     * @return NBT compound containing custom data
+     */
+    public NbtCompound getCustomData() {
+        if (customData == null) {
+            customData = new NbtCompound();
+        }
+        return customData;
+    }
+    
+    /**
+     * Sets the custom data for this building.
+     * @param data NBT compound containing custom data
+     */
+    public void setCustomData(NbtCompound data) {
+        this.customData = data != null ? data.copy() : new NbtCompound();
     }
     
     @Override

@@ -70,15 +70,16 @@ public class StartBuildingPacket {
                         return;
                     }
                     
-                    // Check if we can afford the materials
-                    if (!MaterialManager.canAfford(settlement, building.getRequiredMaterials())) {
+                    // Check if we can afford the materials (skip check in creative mode)
+                    boolean creativeMode = player.isCreative();
+                    if (!creativeMode && !MaterialManager.canAfford(settlement, building.getRequiredMaterials())) {
                         SettlementsMod.LOGGER.warn("Cannot start building: insufficient materials for building {}", buildingId);
                         player.sendMessage(net.minecraft.text.Text.literal("Insufficient materials! Check required materials."), false);
                         return;
                     }
                     
-                    // Consume materials
-                    if (!MaterialManager.consumeMaterialsForBuilding(building, settlement)) {
+                    // Consume materials (pass world for creative mode check)
+                    if (!MaterialManager.consumeMaterialsForBuilding(building, settlement, world)) {
                         SettlementsMod.LOGGER.warn("Failed to consume materials for building {}", buildingId);
                         player.sendMessage(net.minecraft.text.Text.literal("Failed to consume materials"), false);
                         return;

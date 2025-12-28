@@ -9,6 +9,8 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.DoorBlock;
+import net.minecraft.block.enums.DoubleBlockHalf;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.particle.BlockStateParticleEffect;
@@ -81,8 +83,14 @@ public class BlockPlacementScheduler {
             // Calculate absolute world position
             BlockPos worldPos = basePos.add(rotatedPos);
             
-            // Add to queue
-            queue.addBlock(worldPos, structureBlock.getBlockState(), structureBlock.getBlockEntityData());
+            // Rotate block state if needed (for directional blocks like stairs, slabs, etc.)
+            BlockState rotatedState = BlockStateRotator.rotateBlockState(
+                structureBlock.getBlockState(), 
+                rotation
+            );
+            
+            // Add to queue with rotated block state
+            queue.addBlock(worldPos, rotatedState, structureBlock.getBlockEntityData());
         }
         
         data.addBuildingQueue(building.getId(), queue);
@@ -263,6 +271,11 @@ public class BlockPlacementScheduler {
             }
             
             try {
+                // Special handling for doors - they need both halves placed together
+                if (state.getBlock() instanceof DoorBlock) {
+                    return placeDoorBlock(world, pos, state);
+                }
+                
                 // Place the block with proper flags for client synchronization
                 // NOTIFY_NEIGHBORS: Notify neighboring blocks of the change
                 // NOTIFY_LISTENERS: Notify block update listeners (including clients)
@@ -296,6 +309,68 @@ public class BlockPlacementScheduler {
             } catch (Exception e) {
                 SettlementsMod.LOGGER.error("Error placing block at {}", pos, e);
                 return false;
+            }
+        }
+        
+        /**
+         * Places a door block, ensuring both halves are placed together.
+         * Doors require both upper and lower halves to be placed in the same operation.
+         * @param world The server world
+         * @param pos The position to place the door
+         * @param state The door block state
+         * @return true if placed successfully
+         */
+        private boolean placeDoorBlock(ServerWorld world, BlockPos pos, BlockState state) {
+            if (!(state.getBlock() instanceof DoorBlock)) {
+                return false;
+            }
+            
+            DoubleBlockHalf half = state.get(DoorBlock.HALF);
+            
+            int flags = Block.NOTIFY_NEIGHBORS | Block.NOTIFY_LISTENERS;
+            
+            if (half == DoubleBlockHalf.LOWER) {
+                // Place lower half
+                boolean lowerPlaced = world.setBlockState(pos, state, flags);
+                if (!lowerPlaced) {
+                    return false;
+                }
+                
+                // Immediately place upper half
+                BlockPos upperPos = pos.up();
+                BlockState upperState = state.with(DoorBlock.HALF, DoubleBlockHalf.UPPER);
+                boolean upperPlaced = world.setBlockState(upperPos, upperState, flags);
+                
+                if (!upperPlaced) {
+                    // If upper half failed, remove lower half to prevent broken door
+                    world.setBlockState(pos, Blocks.AIR.getDefaultState(), flags);
+                    SettlementsMod.LOGGER.warn("Failed to place door upper half at {}, removed lower half", upperPos);
+                    return false;
+                }
+                
+                // Visual feedback for both halves
+                addVisualFeedback(world, pos, state);
+                addVisualFeedback(world, upperPos, upperState);
+                
+                return true;
+            } else {
+                // Upper half - check if lower half is already placed
+                BlockPos lowerPos = pos.down();
+                BlockState lowerState = world.getBlockState(lowerPos);
+                
+                if (lowerState.getBlock() instanceof DoorBlock && 
+                    lowerState.get(DoorBlock.HALF) == DoubleBlockHalf.LOWER) {
+                    // Lower half is already placed, just place upper half
+                    boolean placed = world.setBlockState(pos, state, flags);
+                    if (placed) {
+                        addVisualFeedback(world, pos, state);
+                    }
+                    return placed;
+                } else {
+                    // Lower half not placed yet - skip this block, it will be placed when we process the lower half
+                    SettlementsMod.LOGGER.debug("Skipping door upper half at {} - lower half not placed yet", pos);
+                    return true; // Return true so we don't retry, but don't actually place
+                }
             }
         }
         

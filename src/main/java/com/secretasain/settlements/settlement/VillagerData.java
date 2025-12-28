@@ -19,6 +19,7 @@ public class VillagerData {
     private UUID assignedBuildingId; // Building this villager is assigned to work at (null if unassigned)
     private java.util.Map<String, Integer> accumulatedItems; // Items accumulated for deposit (item ID -> count)
     private boolean isDepositing; // Whether villager is currently on a deposit trip
+    private long chestArrivalTime; // World time when villager arrived at chest (0 if not at chest)
 
     public VillagerData(UUID entityId, BlockPos lastKnownPos, String profession, boolean isEmployed, String name) {
         this.entityId = entityId;
@@ -30,6 +31,7 @@ public class VillagerData {
         this.assignedBuildingId = null;
         this.accumulatedItems = new java.util.HashMap<>();
         this.isDepositing = false;
+        this.chestArrivalTime = 0;
     }
 
     public UUID getEntityId() {
@@ -107,6 +109,18 @@ public class VillagerData {
     
     public void setDepositing(boolean depositing) {
         isDepositing = depositing;
+        if (!depositing) {
+            // Reset chest arrival time when no longer depositing
+            chestArrivalTime = 0;
+        }
+    }
+    
+    public long getChestArrivalTime() {
+        return chestArrivalTime;
+    }
+    
+    public void setChestArrivalTime(long worldTime) {
+        this.chestArrivalTime = worldTime;
     }
 
     /**
@@ -134,6 +148,7 @@ public class VillagerData {
         }
         nbt.put("accumulatedItems", itemsNbt);
         nbt.putBoolean("isDepositing", isDepositing);
+        nbt.putLong("chestArrivalTime", chestArrivalTime);
         
         return nbt;
     }
@@ -164,6 +179,7 @@ public class VillagerData {
             }
         }
         data.isDepositing = nbt.contains("isDepositing") ? nbt.getBoolean("isDepositing") : false;
+        data.chestArrivalTime = nbt.contains("chestArrivalTime") ? nbt.getLong("chestArrivalTime") : 0;
         
         return data;
     }

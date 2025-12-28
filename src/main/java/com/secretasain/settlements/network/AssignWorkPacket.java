@@ -6,6 +6,8 @@ import com.secretasain.settlements.settlement.Settlement;
 import com.secretasain.settlements.settlement.SettlementManager;
 import com.secretasain.settlements.settlement.VillagerData;
 import com.secretasain.settlements.settlement.WorkAssignmentManager;
+import com.secretasain.settlements.townhall.TownHallDetector;
+import com.secretasain.settlements.townhall.TownHallLibrarianManager;
 import com.secretasain.settlements.trader.TraderVillagerManager;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.text.Text;
@@ -64,16 +66,16 @@ public class AssignWorkPacket {
                                 .orElse(null);
                             
                             if (building != null) {
-                                // Check if this is a trader hut
-                                String structurePath = building.getStructureType().getPath();
-                                if (structurePath.contains("trader_hut") || structurePath.contains("traderhut")) {
-                                    // Find villager data
-                                    VillagerData villagerData = settlement.getVillagers().stream()
-                                        .filter(v -> v.getEntityId().equals(villagerId))
-                                        .findFirst()
-                                        .orElse(null);
-                                    
-                                    if (villagerData != null) {
+                                // Find villager data
+                                VillagerData villagerData = settlement.getVillagers().stream()
+                                    .filter(v -> v.getEntityId().equals(villagerId))
+                                    .findFirst()
+                                    .orElse(null);
+                                
+                                if (villagerData != null) {
+                                    // Check if this is a trader hut
+                                    String structurePath = building.getStructureType().getPath();
+                                    if (structurePath.contains("trader_hut") || structurePath.contains("traderhut")) {
                                         // Convert to special trader
                                         TraderVillagerManager.convertToSpecialTrader(
                                             player.getServerWorld(), 
@@ -81,6 +83,22 @@ public class AssignWorkPacket {
                                             villagerData, 
                                             building
                                         );
+                                    } else if (TownHallDetector.isTownHall(building)) {
+                                        // Convert to librarian for town hall
+                                        SettlementsMod.LOGGER.info("Assigning villager {} to town hall {} as librarian", 
+                                            villagerData.getEntityId(), building.getId());
+                                        boolean assigned = TownHallLibrarianManager.assignLibrarian(
+                                            player.getServerWorld(),
+                                            settlement,
+                                            villagerData,
+                                            building
+                                        );
+                                        if (assigned) {
+                                            SettlementsMod.LOGGER.info("Successfully assigned librarian to town hall {} - villager spawning and wandering trader enhancement now active", 
+                                                building.getId());
+                                        } else {
+                                            SettlementsMod.LOGGER.warn("Failed to assign librarian to town hall {}", building.getId());
+                                        }
                                     }
                                 }
                                 
@@ -105,20 +123,32 @@ public class AssignWorkPacket {
                         }
                         
                         if (WorkAssignmentManager.unassignVillager(settlement, villagerId)) {
-                            // Check if villager was a special trader and restore original profession
+                            // Check if villager was a special trader or librarian and restore original profession
                             VillagerData villagerData = settlement.getVillagers().stream()
                                 .filter(v -> v.getEntityId().equals(villagerId))
                                 .findFirst()
                                 .orElse(null);
                             
-                            if (villagerData != null && TraderVillagerManager.isSpecialTrader(villagerId)) {
-                                // Restore original profession
-                                TraderVillagerManager.restoreOriginalProfession(
-                                    player.getServerWorld(),
-                                    settlement,
-                                    villagerData,
-                                    affectedBuilding
-                                );
+                            if (villagerData != null) {
+                                // Check if villager was a special trader
+                                if (TraderVillagerManager.isSpecialTrader(villagerId)) {
+                                    // Restore original profession
+                                    TraderVillagerManager.restoreOriginalProfession(
+                                        player.getServerWorld(),
+                                        settlement,
+                                        villagerData,
+                                        affectedBuilding
+                                    );
+                                }
+                                
+                                // Check if building was a town hall and unassign librarian
+                                if (affectedBuilding != null && TownHallDetector.isTownHall(affectedBuilding)) {
+                                    TownHallLibrarianManager.unassignLibrarian(
+                                        player.getServerWorld(),
+                                        settlement,
+                                        affectedBuilding
+                                    );
+                                }
                             }
                             
                             player.sendMessage(Text.translatable("settlements.work.unassigned"), false);

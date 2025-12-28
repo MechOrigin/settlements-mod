@@ -16,9 +16,11 @@ public class Settlement {
     private int radius;
     private String name;
     private List<VillagerData> villagers;
+    private List<GolemData> golems;
     private List<Building> buildings;
     private Map<String, Integer> materials; // Using String for ResourceLocation key for now
     private int level; // Settlement level (1-5)
+    private com.secretasain.settlements.ender.EnderUpgrade enderUpgrade; // Ender upgrade for teleportation
 
     /**
      * Creates a new settlement with the given parameters.
@@ -33,9 +35,11 @@ public class Settlement {
         this.radius = radius;
         this.name = name;
         this.villagers = new ArrayList<>();
+        this.golems = new ArrayList<>();
         this.buildings = new ArrayList<>();
         this.materials = new HashMap<>();
         this.level = 1; // Start at level 1
+        this.enderUpgrade = null; // No ender upgrade by default
     }
 
     /**
@@ -61,6 +65,16 @@ public class Settlement {
             }
         }
         
+        // Load golems
+        if (nbt.contains("golems", 9)) { // 9 = NbtList type
+            NbtList golemList = nbt.getList("golems", 10); // 10 = NbtCompound type
+            for (int i = 0; i < golemList.size(); i++) {
+                NbtCompound golemNbt = golemList.getCompound(i);
+                GolemData golem = GolemData.fromNbt(golemNbt);
+                settlement.golems.add(golem);
+            }
+        }
+        
         // Load buildings
         if (nbt.contains("buildings", 9)) {
             NbtList buildingList = nbt.getList("buildings", 10);
@@ -81,6 +95,14 @@ public class Settlement {
         
         // Load level (default to 1 if not present for backwards compatibility)
         settlement.level = nbt.contains("level", 3) ? nbt.getInt("level") : 1;
+        
+        // Load ender upgrade (if present)
+        if (nbt.contains("enderUpgrade", 10)) { // 10 = NbtCompound
+            settlement.enderUpgrade = com.secretasain.settlements.ender.EnderUpgrade.fromNbt(
+                nbt.getCompound("enderUpgrade"), 
+                id
+            );
+        }
         
         return settlement;
     }
@@ -103,6 +125,13 @@ public class Settlement {
         }
         nbt.put("villagers", villagerList);
         
+        // Save golems
+        NbtList golemList = new NbtList();
+        for (GolemData golem : golems) {
+            golemList.add(golem.toNbt());
+        }
+        nbt.put("golems", golemList);
+        
         // Save buildings
         NbtList buildingList = new NbtList();
         for (Building building : buildings) {
@@ -119,6 +148,11 @@ public class Settlement {
         
         // Save level
         nbt.putInt("level", level);
+        
+        // Save ender upgrade (if present)
+        if (enderUpgrade != null) {
+            nbt.put("enderUpgrade", enderUpgrade.toNbt());
+        }
         
         return nbt;
     }
@@ -160,6 +194,10 @@ public class Settlement {
         return villagers;
     }
 
+    public List<GolemData> getGolems() {
+        return golems;
+    }
+
     public List<Building> getBuildings() {
         return buildings;
     }
@@ -174,6 +212,14 @@ public class Settlement {
     
     public void setLevel(int level) {
         this.level = Math.max(1, Math.min(5, level)); // Clamp to 1-5
+    }
+    
+    public com.secretasain.settlements.ender.EnderUpgrade getEnderUpgrade() {
+        return enderUpgrade;
+    }
+    
+    public void setEnderUpgrade(com.secretasain.settlements.ender.EnderUpgrade upgrade) {
+        this.enderUpgrade = upgrade;
     }
     
     /**

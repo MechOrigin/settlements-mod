@@ -21,6 +21,7 @@ public class SettlementsMod implements ModInitializer {
 		// Proceed with mild caution.
 
 		LOGGER.info("Settlements Mod initialized!");
+		LOGGER.info("Town Hall systems registered - villager spawning and wandering trader enhancement enabled");
 		
 		// Register blocks
 		com.secretasain.settlements.block.ModBlocks.register();
@@ -28,11 +29,38 @@ public class SettlementsMod implements ModInitializer {
 		// Register villager scanning system
 		com.secretasain.settlements.settlement.VillagerScanningSystem.register();
 		
+		// Register golem scanning system
+		com.secretasain.settlements.settlement.GolemScanningSystem.register();
+		
 		// Register wandering trader attraction system
 		com.secretasain.settlements.trader.WanderingTraderAttractionSystem.register();
 		
+		// Register town hall villager spawner system
+		com.secretasain.settlements.townhall.TownHallVillagerSpawner.register();
+		
+		// Register wandering trader despawn handler
+		com.secretasain.settlements.townhall.WanderingTraderDespawnHandler.register();
+		
+		// Register wandering trader spawn system (more reliable than mixin-only approach)
+		com.secretasain.settlements.townhall.WanderingTraderSpawnSystem.register();
+		
 		// Register villager pathfinding system
 		com.secretasain.settlements.settlement.VillagerPathfindingSystem.register();
+		
+		// Register golem pathfinding system
+		com.secretasain.settlements.settlement.GolemPathfindingSystem.register();
+		
+		// Register road placement system
+		com.secretasain.settlements.road.RoadPlacementTickSystem.register();
+		
+		// Register ender teleport system
+		com.secretasain.settlements.ender.VillagerEnderTeleportSystem.register();
+		
+		// Register farm composter system
+		com.secretasain.settlements.farm.FarmComposterSystem.register();
+		
+		// Register lumberyard item collector system
+		com.secretasain.settlements.settlement.LumberyardItemCollectorSystem.register();
 		
 		// Register task execution system
 		com.secretasain.settlements.settlement.TaskExecutionSystem.register();
@@ -55,6 +83,7 @@ public class SettlementsMod implements ModInitializer {
 		com.secretasain.settlements.network.UnloadInventoryPacket.register();
 		com.secretasain.settlements.network.HireFireVillagerPacket.register();
 		com.secretasain.settlements.network.AssignWorkPacket.register();
+		com.secretasain.settlements.network.AssignGolemPacket.register();
 		com.secretasain.settlements.network.BuildingOutputDataPacket.register();
 		
 		// Load building output config when server starts

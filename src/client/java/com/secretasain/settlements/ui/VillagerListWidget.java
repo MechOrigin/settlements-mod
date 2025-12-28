@@ -1,13 +1,17 @@
 package com.secretasain.settlements.ui;
 
 import com.secretasain.settlements.settlement.HiringCostCalculator;
+import com.secretasain.settlements.settlement.Settlement;
 import com.secretasain.settlements.settlement.VillagerData;
+import com.secretasain.settlements.settlement.GolemData;
+import com.secretasain.settlements.settlement.Building;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.AlwaysSelectedEntryListWidget;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 
 import java.util.List;
 import java.util.UUID;
@@ -15,15 +19,21 @@ import java.util.UUID;
 /**
  * Widget for displaying a scrollable list of villagers.
  */
-public class VillagerListWidget extends AlwaysSelectedEntryListWidget<VillagerListWidget.VillagerEntry> {
+@SuppressWarnings("rawtypes")
+public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
     private final List<VillagerData> villagers;
+    private final List<GolemData> golems;
+    private final Settlement settlement; // Settlement for building lookups
     private java.util.function.Consumer<VillagerData> onHireCallback;
     private java.util.function.Consumer<VillagerData> onFireCallback;
     private java.util.function.BiConsumer<VillagerData, UUID> onAssignWorkCallback; // villager, buildingId (null to unassign)
+    private java.util.function.BiConsumer<GolemData, UUID> onAssignGolemCallback; // golem, buildingId (null to unassign)
     
-    public VillagerListWidget(MinecraftClient client, int width, int height, int top, int bottom, int itemHeight, List<VillagerData> villagers) {
+    public VillagerListWidget(MinecraftClient client, int width, int height, int top, int bottom, int itemHeight, List<VillagerData> villagers, List<GolemData> golems, Settlement settlement) {
         super(client, width, height, top, bottom, itemHeight);
         this.villagers = villagers;
+        this.golems = golems != null ? golems : new java.util.ArrayList<>();
+        this.settlement = settlement;
         this.updateEntries();
     }
     
@@ -50,12 +60,25 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget<VillagerLi
     }
     
     /**
-     * Updates the list entries from the villager data.
+     * Sets the callback to be called when a golem's assign button is clicked.
+     * @param callback Callback that receives the golem and building ID (null to unassign)
+     */
+    public void setOnAssignGolemCallback(java.util.function.BiConsumer<GolemData, UUID> callback) {
+        this.onAssignGolemCallback = callback;
+    }
+    
+    /**
+     * Updates the list entries from the villager and golem data.
      */
     public void updateEntries() {
         this.clearEntries();
+        // Add villagers first
         for (VillagerData villager : villagers) {
             this.addEntry(new VillagerEntry(villager));
+        }
+        // Add golems after villagers
+        for (GolemData golem : golems) {
+            this.addEntry(new GolemEntry(golem));
         }
     }
     
@@ -92,7 +115,8 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget<VillagerLi
             int endIndex = Math.min(this.children().size(), startIndex + (height / this.itemHeight) + 2);
             
             for (int i = startIndex; i < endIndex && i < this.children().size(); i++) {
-                VillagerEntry entry = this.children().get(i);
+                @SuppressWarnings("unchecked")
+                AlwaysSelectedEntryListWidget.Entry<?> entry = (AlwaysSelectedEntryListWidget.Entry<?>) this.children().get(i);
                 int entryY = y + (i * this.itemHeight) - scrollAmount;
                 
                 // Only render if entry is within visible bounds
@@ -136,42 +160,71 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget<VillagerLi
             
             // Find which entry was clicked
             for (int i = 0; i < this.children().size(); i++) {
-                VillagerEntry entry = this.children().get(i);
+                @SuppressWarnings("unchecked")
+                AlwaysSelectedEntryListWidget.Entry<?> entry = (AlwaysSelectedEntryListWidget.Entry<?>) this.children().get(i);
                 int entryY = y + (i * this.itemHeight) - scrollAmount;
                 
                 if (entryY + this.itemHeight >= y && entryY <= y + (this.bottom - this.top)) {
                     if (mouseX >= x && mouseX <= x + this.width && 
                         mouseY >= entryY && mouseY <= entryY + this.itemHeight) {
                         
-                        // Check if hire button was clicked
-                        if (entry.isHireButtonClicked(mouseX, mouseY, x, entryY, this.width, this.itemHeight)) {
-                            if (onHireCallback != null) {
-                                onHireCallback.accept(entry.getVillager());
-                            }
-                            return true;
-                        }
-                        
-                        // Check if fire button was clicked
-                        if (entry.isFireButtonClicked(mouseX, mouseY, x, entryY, this.width, this.itemHeight)) {
-                            if (onFireCallback != null) {
-                                onFireCallback.accept(entry.getVillager());
-                            }
-                            return true;
-                        }
-                        
-                        // Check if assign/unassign work button was clicked
-                        if (entry.isAssignWorkButtonClicked(mouseX, mouseY, x, entryY, this.width, this.itemHeight)) {
-                            if (onAssignWorkCallback != null) {
-                                VillagerData v = entry.getVillager();
-                                if (v.isAssigned()) {
-                                    // Unassign - pass the current building ID
-                                    onAssignWorkCallback.accept(v, v.getAssignedBuildingId());
-                                } else {
-                                    // Assign - pass null to indicate "assign to first available"
-                                    onAssignWorkCallback.accept(v, null);
+                        // Handle villager entry
+                        if (entry instanceof VillagerEntry) {
+                            VillagerEntry villagerEntry = (VillagerEntry) entry;
+                            
+                            // Check if hire button was clicked
+                            if (villagerEntry.isHireButtonClicked(mouseX, mouseY, x, entryY, this.width, this.itemHeight)) {
+                                if (onHireCallback != null) {
+                                    onHireCallback.accept(villagerEntry.getVillager());
                                 }
+                                return true;
                             }
-                            return true;
+                            
+                            // Check if fire button was clicked
+                            if (villagerEntry.isFireButtonClicked(mouseX, mouseY, x, entryY, this.width, this.itemHeight)) {
+                                if (onFireCallback != null) {
+                                    onFireCallback.accept(villagerEntry.getVillager());
+                                }
+                                return true;
+                            }
+                            
+                            // Check if assign/unassign work button was clicked
+                            if (villagerEntry.isAssignWorkButtonClicked(mouseX, mouseY, x, entryY, this.width, this.itemHeight)) {
+                                if (onAssignWorkCallback != null) {
+                                    VillagerData v = villagerEntry.getVillager();
+                                    if (v.isAssigned()) {
+                                        // Unassign - pass the current building ID
+                                        onAssignWorkCallback.accept(v, v.getAssignedBuildingId());
+                                    } else {
+                                        // Assign - pass null to indicate "assign to first available"
+                                        onAssignWorkCallback.accept(v, null);
+                                    }
+                                }
+                                return true;
+                            }
+                        }
+                        
+                        // Handle golem entry
+                        if (entry instanceof GolemEntry) {
+                            GolemEntry golemEntry = (GolemEntry) entry;
+                            
+                            // Check if assign button was clicked
+                            if (golemEntry.isAssignButtonClicked((int)mouseX, (int)mouseY, x, entryY, this.width, this.itemHeight)) {
+                                if (onAssignGolemCallback != null) {
+                                    // Pass special UUID to indicate "show selection dialog"
+                                    UUID specialUuid = UUID.fromString("00000000-0000-0000-0000-000000000001");
+                                    onAssignGolemCallback.accept(golemEntry.getGolem(), specialUuid);
+                                }
+                                return true;
+                            }
+                            
+                            // Check if unassign button was clicked
+                            if (golemEntry.isUnassignButtonClicked((int)mouseX, (int)mouseY, x, entryY, this.width, this.itemHeight)) {
+                                if (onAssignGolemCallback != null) {
+                                    onAssignGolemCallback.accept(golemEntry.getGolem(), golemEntry.getGolem().getAssignedWallStationId());
+                                }
+                                return true;
+                            }
                         }
                         
                         // Otherwise select the entry
@@ -187,7 +240,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget<VillagerLi
     /**
      * A single entry in the villager list.
      */
-    public static class VillagerEntry extends AlwaysSelectedEntryListWidget.Entry<VillagerEntry> {
+    public class VillagerEntry extends AlwaysSelectedEntryListWidget.Entry<VillagerEntry> {
         private final VillagerData villager;
         
         public VillagerEntry(VillagerData villager) {
@@ -261,22 +314,87 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget<VillagerLi
             
             // Draw work assignment status for employed villagers OR hiring cost for unemployed
             if (villager.isEmployed()) {
-                Text assignmentText;
-                if (villager.isAssigned()) {
-                    assignmentText = Text.translatable("settlements.ui.villagers.assigned");
-                } else {
-                    assignmentText = Text.translatable("settlements.ui.villagers.unassigned");
-                }
-                int assignmentColor = villager.isAssigned() ? 0x00AAFF : 0xFFAA00;
+                int yOffset = 39;
                 
-                context.drawText(
-                    MinecraftClient.getInstance().textRenderer,
-                    assignmentText,
-                    x + 5,
-                    y + 39,
-                    assignmentColor,
-                    false
-                );
+                if (villager.isAssigned()) {
+                    // Look up building information
+                    Building assignedBuilding = null;
+                    if (settlement != null && villager.getAssignedBuildingId() != null) {
+                        assignedBuilding = settlement.getBuildings().stream()
+                            .filter(b -> b.getId().equals(villager.getAssignedBuildingId()))
+                            .findFirst()
+                            .orElse(null);
+                    }
+                    
+                    if (assignedBuilding != null) {
+                        // Show building structure type
+                        Identifier structureType = assignedBuilding.getStructureType();
+                        String structureName = structureType.getPath();
+                        // Format structure name (remove path separators, capitalize)
+                        if (structureName.contains("/")) {
+                            structureName = structureName.substring(structureName.lastIndexOf('/') + 1);
+                        }
+                        if (structureName.contains("_")) {
+                            String[] parts = structureName.split("_");
+                            StringBuilder formatted = new StringBuilder();
+                            for (String part : parts) {
+                                if (!part.isEmpty()) {
+                                    if (formatted.length() > 0) formatted.append(" ");
+                                    formatted.append(part.substring(0, 1).toUpperCase()).append(part.substring(1));
+                                }
+                            }
+                            structureName = formatted.toString();
+                        } else if (!structureName.isEmpty()) {
+                            structureName = structureName.substring(0, 1).toUpperCase() + structureName.substring(1);
+                        }
+                        
+                        Text buildingText = Text.translatable("settlements.ui.villagers.assigned_to", structureName);
+                        context.drawText(
+                            MinecraftClient.getInstance().textRenderer,
+                            buildingText,
+                            x + 5,
+                            y + yOffset,
+                            0x00AAFF,
+                            false
+                        );
+                        
+                        // Show building position
+                        yOffset += 12;
+                        net.minecraft.util.math.BlockPos buildingPos = assignedBuilding.getPosition();
+                        Text positionText = Text.translatable("settlements.ui.villagers.assignment_location", 
+                            buildingPos.getX(), buildingPos.getY(), buildingPos.getZ());
+                        context.drawText(
+                            MinecraftClient.getInstance().textRenderer,
+                            positionText,
+                            x + 5,
+                            y + yOffset,
+                            0xAAAAAA,
+                            false
+                        );
+                    } else {
+                        // Building not found - show generic assigned text
+                        Text assignmentText = Text.translatable("settlements.ui.villagers.assigned");
+                        context.drawText(
+                            MinecraftClient.getInstance().textRenderer,
+                            assignmentText,
+                            x + 5,
+                            y + yOffset,
+                            0x00AAFF,
+                            false
+                        );
+                    }
+                } else {
+                    // Not assigned to any building
+                    Text assignmentText = Text.translatable("settlements.ui.villagers.unassigned");
+                    context.drawText(
+                        MinecraftClient.getInstance().textRenderer,
+                        assignmentText,
+                        x + 5,
+                        y + yOffset,
+                        0xFFAA00,
+                        false
+                    );
+                }
             } else {
                 // Draw hiring cost for unemployed villagers
                 int cost = HiringCostCalculator.calculateHiringCost(villager);
@@ -455,6 +573,195 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget<VillagerLi
         
         public VillagerData getVillager() {
             return villager;
+        }
+    }
+    
+    /**
+     * A single entry in the list for a golem.
+     */
+    public class GolemEntry extends AlwaysSelectedEntryListWidget.Entry<GolemEntry> {
+        private final GolemData golem;
+        
+        public GolemEntry(GolemData golem) {
+            this.golem = golem;
+        }
+        
+        @Override
+        public void render(DrawContext context, int index, int y, int x, int entryWidth, int entryHeight, int mouseX, int mouseY, boolean hovered, float tickDelta) {
+            // Draw background on hover
+            if (hovered) {
+                context.fill(x, y, x + entryWidth, y + entryHeight, 0x33FFFFFF);
+            }
+            
+            // Draw golem name
+            Text nameText = golem.getName() != null && !golem.getName().isEmpty() 
+                ? Text.literal(golem.getName())
+                : Text.translatable("settlements.ui.golems.unnamed");
+            
+            context.drawText(
+                MinecraftClient.getInstance().textRenderer,
+                nameText,
+                x + 5,
+                y + 3,
+                0xFFFFFF,
+                false
+            );
+            
+            // Draw "Iron Golem" label
+            Text typeText = Text.literal("Iron Golem");
+            context.drawText(
+                MinecraftClient.getInstance().textRenderer,
+                typeText,
+                x + 5,
+                y + 15,
+                0xCCCCCC,
+                false
+            );
+            
+            // Draw assignment status
+            int yOffset = 27;
+            if (golem.isAssigned()) {
+                Building assignedWallStation = null;
+                if (settlement != null && golem.getAssignedWallStationId() != null) {
+                    assignedWallStation = settlement.getBuildings().stream()
+                        .filter(b -> b.getId().equals(golem.getAssignedWallStationId()))
+                        .findFirst()
+                        .orElse(null);
+                }
+                
+                if (assignedWallStation != null) {
+                    Identifier structureType = assignedWallStation.getStructureType();
+                    String structureName = structureType.getPath();
+                    if (structureName.contains("/")) {
+                        structureName = structureName.substring(structureName.lastIndexOf('/') + 1);
+                    }
+                    if (structureName.contains("_")) {
+                        String[] parts = structureName.split("_");
+                        StringBuilder formatted = new StringBuilder();
+                        for (String part : parts) {
+                            if (!part.isEmpty()) {
+                                if (formatted.length() > 0) formatted.append(" ");
+                                formatted.append(part.substring(0, 1).toUpperCase()).append(part.substring(1));
+                            }
+                        }
+                        structureName = formatted.toString();
+                    } else if (!structureName.isEmpty()) {
+                        structureName = structureName.substring(0, 1).toUpperCase() + structureName.substring(1);
+                    }
+                    
+                    Text wallStationText = Text.translatable("settlements.ui.golems.assigned_to", structureName);
+                    context.drawText(
+                        MinecraftClient.getInstance().textRenderer,
+                        wallStationText,
+                        x + 5,
+                        y + yOffset,
+                        0x00AAFF,
+                        false
+                    );
+                } else {
+                    Text assignmentText = Text.translatable("settlements.ui.golems.assigned");
+                    context.drawText(
+                        MinecraftClient.getInstance().textRenderer,
+                        assignmentText,
+                        x + 5,
+                        y + yOffset,
+                        0x00AAFF,
+                        false
+                    );
+                }
+            } else {
+                Text assignmentText = Text.translatable("settlements.ui.golems.unassigned");
+                context.drawText(
+                    MinecraftClient.getInstance().textRenderer,
+                    assignmentText,
+                    x + 5,
+                    y + yOffset,
+                    0xFFAA00,
+                    false
+                );
+            }
+            
+            // Calculate button positions
+            int buttonWidth = 60;
+            int buttonHeight = 14;
+            int buttonY = y + entryHeight - buttonHeight - 3;
+            int buttonX = x + entryWidth - buttonWidth - 5;
+            
+            // Draw Assign/Unassign button
+            boolean showAssignButton = !golem.isAssigned();
+            boolean showUnassignButton = golem.isAssigned();
+            
+            if (showAssignButton) {
+                boolean buttonHovered = mouseX >= buttonX && mouseX <= buttonX + buttonWidth &&
+                                mouseY >= buttonY && mouseY <= buttonY + buttonHeight;
+                int buttonColor = buttonHovered ? 0xFF2196F3 : 0xFF1976D2;
+                context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, buttonColor);
+                context.drawBorder(buttonX, buttonY, buttonWidth, buttonHeight, 0xFF000000);
+                
+                Text assignText = Text.translatable("settlements.ui.golems.assign_wall_station");
+                int textWidth = MinecraftClient.getInstance().textRenderer.getWidth(assignText);
+                context.drawText(
+                    MinecraftClient.getInstance().textRenderer,
+                    assignText,
+                    buttonX + (buttonWidth - textWidth) / 2,
+                    buttonY + (buttonHeight - 8) / 2,
+                    0xFFFFFF,
+                    false
+                );
+            } else if (showUnassignButton) {
+                boolean buttonHovered = mouseX >= buttonX && mouseX <= buttonX + buttonWidth &&
+                                mouseY >= buttonY && mouseY <= buttonY + buttonHeight;
+                int buttonColor = buttonHovered ? 0xFFFF9800 : 0xFFF57C00;
+                context.fill(buttonX, buttonY, buttonX + buttonWidth, buttonY + buttonHeight, buttonColor);
+                context.drawBorder(buttonX, buttonY, buttonWidth, buttonHeight, 0xFF000000);
+                
+                Text unassignText = Text.translatable("settlements.ui.golems.unassign_wall_station");
+                int textWidth = MinecraftClient.getInstance().textRenderer.getWidth(unassignText);
+                context.drawText(
+                    MinecraftClient.getInstance().textRenderer,
+                    unassignText,
+                    buttonX + (buttonWidth - textWidth) / 2,
+                    buttonY + (buttonHeight - 8) / 2,
+                    0xFFFFFF,
+                    false
+                );
+            }
+        }
+        
+        public boolean isAssignButtonClicked(int mouseX, int mouseY, int x, int y, int entryWidth, int entryHeight) {
+            if (!golem.isAssigned()) {
+                int buttonWidth = 60;
+                int buttonHeight = 14;
+                int buttonY = y + entryHeight - buttonHeight - 3;
+                int buttonX = x + entryWidth - buttonWidth - 5;
+                return mouseX >= buttonX && mouseX <= buttonX + buttonWidth &&
+                       mouseY >= buttonY && mouseY <= buttonY + buttonHeight;
+            }
+            return false;
+        }
+        
+        public boolean isUnassignButtonClicked(int mouseX, int mouseY, int x, int y, int entryWidth, int entryHeight) {
+            if (golem.isAssigned()) {
+                int buttonWidth = 60;
+                int buttonHeight = 14;
+                int buttonY = y + entryHeight - buttonHeight - 3;
+                int buttonX = x + entryWidth - buttonWidth - 5;
+                return mouseX >= buttonX && mouseX <= buttonX + buttonWidth &&
+                       mouseY >= buttonY && mouseY <= buttonY + buttonHeight;
+            }
+            return false;
+        }
+        
+        public GolemData getGolem() {
+            return golem;
+        }
+        
+        @Override
+        public Text getNarration() {
+            String name = golem.getName() != null && !golem.getName().isEmpty() 
+                ? golem.getName()
+                : Text.translatable("settlements.ui.golems.unnamed").getString();
+            return Text.literal(name + " - Iron Golem");
         }
     }
 }
