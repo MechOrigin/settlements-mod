@@ -44,6 +44,12 @@ public class SettlementsMod implements ModInitializer {
 		// Register wandering trader spawn system (more reliable than mixin-only approach)
 		com.secretasain.settlements.townhall.WanderingTraderSpawnSystem.register();
 		
+		// Register town hall villager attraction system (spawns villagers for town halls without librarians)
+		com.secretasain.settlements.townhall.TownHallVillagerAttractionSystem.register();
+		
+		// Register town hall villager despawn handler (handles 50/50 stay/leave decision)
+		com.secretasain.settlements.townhall.TownHallVillagerDespawnHandler.register();
+		
 		// Register villager pathfinding system
 		com.secretasain.settlements.settlement.VillagerPathfindingSystem.register();
 		
@@ -64,6 +70,12 @@ public class SettlementsMod implements ModInitializer {
 		
 		// Register task execution system
 		com.secretasain.settlements.settlement.TaskExecutionSystem.register();
+		
+		// Register villager sleep system
+		com.secretasain.settlements.settlement.VillagerSleepSystem.register();
+		
+		// Register farm maintenance system (farmland repair and seed planting)
+		com.secretasain.settlements.settlement.FarmMaintenanceSystem.register();
 		
 		// Register villager deposit system
 		com.secretasain.settlements.settlement.VillagerDepositSystem.register();

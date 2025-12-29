@@ -6,15 +6,21 @@ import net.minecraft.block.BlockRenderType;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.ShapeContext;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.BlockView;
+import net.minecraft.world.World;
 
 /**
  * A transparent, non-solid block used to show building placement previews.
  * Players can walk through these blocks, but they are visible to indicate
  * where a building will be constructed.
+ * Ghost blocks are non-interactable - players cannot right-click them.
  */
 public class GhostBlock extends Block implements BlockEntityProvider {
     public GhostBlock(Settings settings) {
@@ -64,6 +70,16 @@ public class GhostBlock extends Block implements BlockEntityProvider {
     @Override
     public BlockRenderType getRenderType(BlockState state) {
         return BlockRenderType.INVISIBLE;
+    }
+    
+    /**
+     * Prevents interaction with ghost blocks - they are preview-only and should not be interactable.
+     * Returns FAIL to prevent any interaction (right-click passes through).
+     */
+    @Override
+    public ActionResult onUse(BlockState state, World world, BlockPos pos, PlayerEntity player, Hand hand, BlockHitResult hit) {
+        // Ghost blocks are non-interactable - return FAIL so interaction passes through
+        return ActionResult.FAIL;
     }
 }
 

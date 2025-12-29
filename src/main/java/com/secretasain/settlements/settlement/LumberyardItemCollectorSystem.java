@@ -145,6 +145,11 @@ public class LumberyardItemCollectorSystem {
                 continue;
             }
             
+            // CRITICAL: Only process COMPLETED buildings
+            if (building.getStatus() != com.secretasain.settlements.building.BuildingStatus.COMPLETED) {
+                continue; // Skip non-completed buildings
+            }
+            
             // Get all villagers assigned to this lumberyard
             List<VillagerData> assignedVillagers = WorkAssignmentManager.getVillagersAssignedToBuilding(
                 settlement, building.getId()

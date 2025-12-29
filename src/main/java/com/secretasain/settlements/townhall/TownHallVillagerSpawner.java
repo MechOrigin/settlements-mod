@@ -137,10 +137,15 @@ public class TownHallVillagerSpawner {
         private void checkTownHalls(ServerWorld world, Settlement settlement) {
             long currentTime = world.getTime();
             
-            // Find all town hall buildings in the settlement
+            // Find all COMPLETED town hall buildings in the settlement
             for (Building building : settlement.getBuildings()) {
                 if (!TownHallDetector.isTownHall(building)) {
                     continue;
+                }
+                
+                // CRITICAL: Only spawn villagers for COMPLETED town halls
+                if (building.getStatus() != com.secretasain.settlements.building.BuildingStatus.COMPLETED) {
+                    continue; // Skip non-completed town halls
                 }
                 
                 // Get town hall data

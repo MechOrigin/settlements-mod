@@ -532,10 +532,12 @@ public class SettlementScreen extends Screen {
             com.secretasain.settlements.SettlementsMod.LOGGER.warn("No cached identifier found for {}, using constructed: {}", selectedStructure, structureIdentifier);
         }
         
-        com.secretasain.settlements.SettlementsMod.LOGGER.info("Sending build mode activation for structure: {}", structureIdentifier);
+        com.secretasain.settlements.SettlementsMod.LOGGER.info("Sending build mode activation for structure: {} in settlement: {}", 
+            structureIdentifier, settlement.getId());
         
         // Send network packet to server to activate build mode
-        ActivateBuildModePacketClient.send(structureIdentifier);
+        // CRITICAL: Include settlement ID so buildings are added to the correct settlement
+        ActivateBuildModePacketClient.send(structureIdentifier, settlement.getId());
         
         // Close the screen
         this.client.setScreen(null);
@@ -1243,9 +1245,13 @@ public class SettlementScreen extends Screen {
             }
             
             // Create and add building list widget when Buildings tab is active
-            if (buildingListWidget == null) {
-                createBuildingListWidget();
+            // Always recreate the widget to ensure it has the latest building data
+            if (buildingListWidget != null) {
+                // Remove old widget if it exists
+                this.remove(buildingListWidget);
+                buildingListWidget = null;
             }
+            createBuildingListWidget();
             if (buildingListWidget != null) {
                 // Only add to children if not already there
                 if (!this.children().contains(buildingListWidget)) {
@@ -2210,9 +2216,21 @@ public class SettlementScreen extends Screen {
         // Update the settlement reference
         this.settlement = updatedSettlement;
         
-        // Recreate building list widget to reflect changes
-        if (activeTab == TabType.BUILDINGS && buildingListWidget != null) {
+        // CRITICAL: Always recreate building list widget if it exists to reflect changes
+        // This ensures newly placed buildings appear even if we're on a different tab
+        if (buildingListWidget != null) {
+            // Remove old widget
+            this.remove(buildingListWidget);
+            buildingListWidget = null;
+        }
+        
+        // Recreate with updated settlement data if we're on Buildings tab
+        if (activeTab == TabType.BUILDINGS) {
             createBuildingListWidget();
+            // Ensure widget is added to children
+            if (buildingListWidget != null && !this.children().contains(buildingListWidget)) {
+                this.addDrawableChild(buildingListWidget);
+            }
         }
         
         // Update material list widget if it exists

@@ -13,6 +13,7 @@ import net.minecraft.util.Identifier;
 
 import java.io.InputStream;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Network packet to activate build mode on the server.
@@ -31,11 +32,12 @@ public class ActivateBuildModePacket {
     public static void register() {
         ServerPlayNetworking.registerGlobalReceiver(ID, (server, player, networkHandler, buf, responseSender) -> {
             String structureIdentifier = buf.readString();
+            UUID settlementId = buf.readUuid(); // Read settlement ID
             
             server.execute(() -> {
                 try {
-                    SettlementsMod.LOGGER.info("Activating build mode for player {} with structure {}", 
-                        player.getName().getString(), structureIdentifier);
+                    SettlementsMod.LOGGER.info("Activating build mode for player {} with structure {} for settlement {}", 
+                        player.getName().getString(), structureIdentifier, settlementId);
                     
                     // Load the structure
                     Identifier structureId = Identifier.tryParse(structureIdentifier);
@@ -53,8 +55,8 @@ public class ActivateBuildModePacket {
                     // Get or create build mode handler for this player
                     BuildModeHandler buildModeHandler = BuildModeManager.getHandler(player);
                     
-                    // Activate build mode on server
-                    buildModeHandler.activateBuildMode(structureData);
+                    // Activate build mode on server with settlement ID
+                    buildModeHandler.activateBuildMode(structureData, settlementId);
                     
                     // Send structure data to client
                     // Load the NBT file again to send to client

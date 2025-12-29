@@ -89,6 +89,12 @@ public class BlockPlacementScheduler {
                 rotation
             );
             
+            // CRITICAL: Skip barrier blocks - they cause invisible collision blocks
+            // Barrier blocks should never be placed from NBT structures
+            if (rotatedState.getBlock() == Blocks.BARRIER) {
+                continue; // Skip this block entirely
+            }
+            
             // Add to queue with rotated block state
             queue.addBlock(worldPos, rotatedState, structureBlock.getBlockEntityData());
         }
@@ -251,6 +257,13 @@ public class BlockPlacementScheduler {
                 return true;
             }
             
+            // CRITICAL: Skip barrier blocks - they cause invisible collision blocks
+            // This is a safety check in case barrier blocks somehow made it into the queue
+            if (state.getBlock() == Blocks.BARRIER) {
+                SettlementsMod.LOGGER.warn("Attempted to place barrier block at {} for building {} - skipping", pos, building.getId());
+                return true; // Return true to continue processing other blocks
+            }
+            
             // Check if chunk is loaded
             if (!world.getChunkManager().isChunkLoaded(pos.getX() >> 4, pos.getZ() >> 4)) {
                 SettlementsMod.LOGGER.debug("Cannot place block at {}: chunk not loaded", pos);
@@ -259,12 +272,25 @@ public class BlockPlacementScheduler {
             
             // Check if position is valid (air or same block)
             BlockState existingState = world.getBlockState(pos);
+            
+            // CRITICAL: Remove ghost block if one exists at this position
+            // This ensures ghost blocks are removed immediately when actual blocks replace them
+            if (existingState.isOf(com.secretasain.settlements.block.ModBlocks.GHOST_BLOCK)) {
+                // Remove ghost block entity if it exists
+                BlockEntity blockEntity = world.getBlockEntity(pos);
+                if (blockEntity != null) {
+                    world.removeBlockEntity(pos);
+                }
+                // The ghost block will be replaced by the actual block below
+            }
+            
             // Allow placement if:
             // 1. Air
             // 2. Same block (already placed)
+            // 3. Ghost block (will be replaced)
             // For other blocks, we'll try to place and let Minecraft handle validation
             // (replaceable blocks like tall grass will be replaced automatically)
-            if (!existingState.isAir() && !existingState.equals(state)) {
+            if (!existingState.isAir() && !existingState.equals(state) && !existingState.isOf(com.secretasain.settlements.block.ModBlocks.GHOST_BLOCK)) {
                 // Check if it's a solid block that would prevent placement
                 // For now, allow placement - Minecraft's setBlockState will handle validation
                 // If it fails, the block just won't be placed (which is fine)
@@ -406,14 +432,31 @@ public class BlockPlacementScheduler {
                 SettlementsMod.LOGGER.info("Building {} completed - materials were consumed: {}", building.getId(), provided);
             }
             
-            // Remove barrier blocks
+            // CRITICAL: Remove ALL barrier blocks - both tracked and any that might be in the structure
+            // First, remove barrier blocks from tracked positions
+            int barrierCount = 0;
             for (BlockPos barrierPos : building.getBarrierPositions()) {
-                if (world.getBlockState(barrierPos).isOf(Blocks.BARRIER)) {
-                    world.setBlockState(barrierPos, Blocks.AIR.getDefaultState(), Block.NOTIFY_NEIGHBORS);
+                if (world.getChunkManager().isChunkLoaded(barrierPos.getX() >> 4, barrierPos.getZ() >> 4)) {
+                    if (world.getBlockState(barrierPos).isOf(Blocks.BARRIER)) {
+                        world.setBlockState(barrierPos, Blocks.AIR.getDefaultState(), 
+                            Block.NOTIFY_NEIGHBORS | Block.NOTIFY_LISTENERS);
+                        barrierCount++;
+                    }
                 }
             }
             // Clear barrier positions using setBarrierPositions with empty list (can't clear unmodifiable list directly)
             building.setBarrierPositions(new java.util.ArrayList<>());
+            
+            // CRITICAL: Remove any remaining ghost blocks and barrier blocks
+            // This comprehensive scan will catch barrier blocks that weren't tracked or are in the structure
+            removeGhostBlocks(building, world);
+            
+            // CRITICAL: Also perform an aggressive barrier block scan of the entire building area
+            removeAllBarrierBlocks(building, world);
+            
+            if (barrierCount > 0) {
+                SettlementsMod.LOGGER.info("Removed {} tracked barrier blocks after building {} completion", barrierCount, building.getId());
+            }
             
             // Create written book receipt/ledger in chest next to lectern (before clearing providedMaterials)
             createCompletionBook(building, settlement, world);
@@ -595,6 +638,227 @@ public class BlockPlacementScheduler {
             }
             
             SettlementsMod.LOGGER.warn("Could not place completion book - all chest slots full");
+        }
+        
+        /**
+         * Removes ghost blocks and barrier blocks for a building after construction completes.
+         * This ensures any ghost blocks or barrier blocks that weren't replaced by actual blocks are cleaned up.
+         * 
+         * This method performs a comprehensive scan of the entire building area to find and remove
+         * all ghost blocks and barrier blocks, not just those in the tracked list. This catches corner blocks
+         * and any that might have been missed during construction.
+         */
+        private void removeGhostBlocks(Building building, ServerWorld world) {
+            int countFromTracked = 0;
+            int countFromScan = 0;
+            int barrierBlocksRemoved = 0;
+            
+            // First, remove ghost blocks from tracked positions
+            for (net.minecraft.util.math.BlockPos ghostPos : building.getGhostBlockPositions()) {
+                // Only remove if chunk is loaded
+                if (world.getChunkManager().isChunkLoaded(ghostPos.getX() >> 4, ghostPos.getZ() >> 4)) {
+                    net.minecraft.block.BlockState currentState = world.getBlockState(ghostPos);
+                    // Check if it's still a ghost block (might have been replaced by actual block during construction)
+                    if (currentState.isOf(com.secretasain.settlements.block.ModBlocks.GHOST_BLOCK)) {
+                        // Remove block entity if it exists
+                        BlockEntity blockEntity = world.getBlockEntity(ghostPos);
+                        if (blockEntity != null) {
+                            world.removeBlockEntity(ghostPos);
+                        }
+                        world.setBlockState(ghostPos, Blocks.AIR.getDefaultState(),
+                            Block.NOTIFY_NEIGHBORS | Block.NOTIFY_LISTENERS);
+                        countFromTracked++;
+                    }
+                }
+            }
+            building.clearGhostBlockPositions();
+            
+            // Second, scan the entire building area to find any remaining ghost blocks and barrier blocks
+            // This catches corner blocks and any that weren't properly tracked
+            // CRITICAL: Use the same approach as block placement - scan all actual block positions from structure
+            try {
+                // Load structure data to get all block positions
+                StructureData structureData = com.secretasain.settlements.building.StructureLoader.loadStructure(
+                    building.getStructureType(), world.getServer());
+                
+                if (structureData != null) {
+                    BlockPos basePos = building.getPosition();
+                    int rotation = building.getRotation();
+                    net.minecraft.util.math.Vec3i dimensions = structureData.getDimensions();
+                    
+                    // Scan all actual block positions from the structure (same as when placing)
+                    // This ensures we cover the exact same area where blocks were placed
+                    java.util.Set<BlockPos> scannedPositions = new java.util.HashSet<>();
+                    
+                    for (com.secretasain.settlements.building.StructureBlock structureBlock : structureData.getBlocks()) {
+                        net.minecraft.util.math.BlockPos relativePos = structureBlock.getRelativePos();
+                        
+                        // Apply rotation to relative position (same as block placement)
+                        BlockPos rotatedPos = applyRotation(relativePos, rotation, dimensions);
+                        
+                        // Calculate absolute world position
+                        BlockPos worldPos = basePos.add(rotatedPos);
+                        scannedPositions.add(worldPos);
+                        
+                        // Also scan adjacent positions (1 block padding) to catch corner blocks
+                        for (int dx = -1; dx <= 1; dx++) {
+                            for (int dy = -1; dy <= 1; dy++) {
+                                for (int dz = -1; dz <= 1; dz++) {
+                                    if (dx == 0 && dy == 0 && dz == 0) continue; // Skip center (already added)
+                                    BlockPos adjacentPos = worldPos.add(dx, dy, dz);
+                                    scannedPositions.add(adjacentPos);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Now scan all collected positions
+                    for (BlockPos scanPos : scannedPositions) {
+                        // Only check if chunk is loaded
+                        if (world.getChunkManager().isChunkLoaded(scanPos.getX() >> 4, scanPos.getZ() >> 4)) {
+                            net.minecraft.block.BlockState currentState = world.getBlockState(scanPos);
+                            
+                            // Remove ghost blocks
+                            if (currentState.isOf(com.secretasain.settlements.block.ModBlocks.GHOST_BLOCK)) {
+                                // Since we're scanning the building's area, any ghost block found here
+                                // is likely from this building. Remove it to ensure complete cleanup.
+                                BlockEntity blockEntity = world.getBlockEntity(scanPos);
+                                
+                                // Remove block entity if it exists
+                                if (blockEntity != null) {
+                                    world.removeBlockEntity(scanPos);
+                                }
+                                world.setBlockState(scanPos, Blocks.AIR.getDefaultState(),
+                                    Block.NOTIFY_NEIGHBORS | Block.NOTIFY_LISTENERS);
+                                countFromScan++;
+                            }
+                            
+                            // CRITICAL: Also remove barrier blocks - they cause invisible collision blocks
+                            // Barrier blocks should never be in completed buildings
+                            if (currentState.getBlock() == Blocks.BARRIER) {
+                                BlockEntity blockEntity = world.getBlockEntity(scanPos);
+                                if (blockEntity != null) {
+                                    world.removeBlockEntity(scanPos);
+                                }
+                                world.setBlockState(scanPos, Blocks.AIR.getDefaultState(),
+                                    Block.NOTIFY_NEIGHBORS | Block.NOTIFY_LISTENERS);
+                                barrierBlocksRemoved++;
+                                SettlementsMod.LOGGER.info("Removed barrier block at {} for building {}", scanPos, building.getId());
+                            }
+                        }
+                    }
+                    
+                    // Fallback: Also scan a bounding box area to catch any barrier blocks outside structure bounds
+                    // This is a safety measure in case barrier blocks were placed outside the structure
+                    int maxDim = Math.max(Math.max(dimensions.getX(), dimensions.getY()), dimensions.getZ());
+                    int padding = 2; // 2-block padding to catch any barrier blocks outside structure
+                    
+                    for (int x = -padding; x < maxDim + padding; x++) {
+                        for (int y = -padding; y < dimensions.getY() + padding; y++) {
+                            for (int z = -padding; z < maxDim + padding; z++) {
+                                BlockPos scanPos = basePos.add(x, y, z);
+                                
+                                // Skip if we already scanned this position
+                                if (scannedPositions.contains(scanPos)) {
+                                    continue;
+                                }
+                                
+                                // Only check if chunk is loaded
+                                if (world.getChunkManager().isChunkLoaded(scanPos.getX() >> 4, scanPos.getZ() >> 4)) {
+                                    net.minecraft.block.BlockState currentState = world.getBlockState(scanPos);
+                                    
+                                    // Only remove barrier blocks in the fallback scan (ghost blocks should be in structure bounds)
+                                    if (currentState.getBlock() == Blocks.BARRIER) {
+                                        BlockEntity blockEntity = world.getBlockEntity(scanPos);
+                                        if (blockEntity != null) {
+                                            world.removeBlockEntity(scanPos);
+                                        }
+                                        world.setBlockState(scanPos, Blocks.AIR.getDefaultState(),
+                                            Block.NOTIFY_NEIGHBORS | Block.NOTIFY_LISTENERS);
+                                        barrierBlocksRemoved++;
+                                        SettlementsMod.LOGGER.info("Removed barrier block at {} (outside structure bounds) for building {}", scanPos, building.getId());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                SettlementsMod.LOGGER.warn("Error scanning building area for ghost blocks and barrier blocks: {}", e.getMessage(), e);
+                // Continue - we've already removed tracked ghost blocks
+            }
+            
+            int totalCount = countFromTracked + countFromScan;
+            if (totalCount > 0 || barrierBlocksRemoved > 0) {
+                SettlementsMod.LOGGER.info("Removed {} ghost blocks and {} barrier blocks after building {} completion ({} ghost blocks from tracked positions, {} ghost blocks from area scan)", 
+                    totalCount, barrierBlocksRemoved, building.getId(), countFromTracked, countFromScan);
+            }
+        }
+        
+        /**
+         * Aggressively removes ALL barrier blocks in the building area.
+         * This is a comprehensive scan that catches barrier blocks from any source.
+         */
+        private void removeAllBarrierBlocks(Building building, ServerWorld world) {
+            int barrierBlocksRemoved = 0;
+            
+            try {
+                // Load structure data to get dimensions
+                StructureData structureData = com.secretasain.settlements.building.StructureLoader.loadStructure(
+                    building.getStructureType(), world.getServer());
+                
+                if (structureData != null) {
+                    net.minecraft.util.math.Vec3i dimensions = structureData.getDimensions();
+                    BlockPos basePos = building.getPosition();
+                    int rotation = building.getRotation();
+                    
+                    // Calculate rotated dimensions (swap X and Z for 90/270 degree rotations)
+                    int width, depth;
+                    if (rotation == 90 || rotation == 270) {
+                        width = dimensions.getZ();
+                        depth = dimensions.getX();
+                    } else {
+                        width = dimensions.getX();
+                        depth = dimensions.getZ();
+                    }
+                    int height = dimensions.getY();
+                    
+                    // AGGRESSIVE SCAN: Scan entire building area with generous padding
+                    // This ensures we catch barrier blocks that might be outside the structure bounds
+                    int padding = 5; // 5-block padding to catch any barrier blocks
+                    for (int x = -padding; x < width + padding; x++) {
+                        for (int y = -padding; y < height + padding; y++) {
+                            for (int z = -padding; z < depth + padding; z++) {
+                                BlockPos scanPos = basePos.add(x, y, z);
+                                
+                                // Only check if chunk is loaded
+                                if (world.getChunkManager().isChunkLoaded(scanPos.getX() >> 4, scanPos.getZ() >> 4)) {
+                                    net.minecraft.block.BlockState currentState = world.getBlockState(scanPos);
+                                    
+                                    // Remove ANY barrier block found in the area
+                                    if (currentState.getBlock() == Blocks.BARRIER) {
+                                        BlockEntity blockEntity = world.getBlockEntity(scanPos);
+                                        if (blockEntity != null) {
+                                            world.removeBlockEntity(scanPos);
+                                        }
+                                        world.setBlockState(scanPos, Blocks.AIR.getDefaultState(),
+                                            Block.NOTIFY_NEIGHBORS | Block.NOTIFY_LISTENERS);
+                                        barrierBlocksRemoved++;
+                                        SettlementsMod.LOGGER.info("Removed barrier block at {} for building {} (aggressive scan)", scanPos, building.getId());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                SettlementsMod.LOGGER.warn("Error performing aggressive barrier block scan: {}", e.getMessage(), e);
+            }
+            
+            if (barrierBlocksRemoved > 0) {
+                SettlementsMod.LOGGER.info("Removed {} barrier blocks from aggressive scan after building {} completion", 
+                    barrierBlocksRemoved, building.getId());
+            }
         }
     }
 }

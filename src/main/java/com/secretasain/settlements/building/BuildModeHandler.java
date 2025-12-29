@@ -14,21 +14,33 @@ public class BuildModeHandler {
     private BlockPos placementPos;
     private int rotation; // 0, 90, 180, 270 degrees
     private final UUID playerId;
+    private UUID settlementId; // Settlement ID for the settlement whose screen was open when build mode was activated
     
     public BuildModeHandler(UUID playerId) {
         this.playerId = playerId;
         this.currentState = BuildMode.INACTIVE;
         this.rotation = 0;
+        this.settlementId = null;
     }
     
     /**
      * Activates build mode with a selected structure.
      * @param structure The structure to place
+     * @param settlementId The settlement ID for the settlement whose screen was open when build mode was activated
      */
-    public void activateBuildMode(StructureData structure) {
+    public void activateBuildMode(StructureData structure, UUID settlementId) {
         this.selectedStructure = structure;
         this.currentState = BuildMode.PLACEMENT;
         this.rotation = 0;
+        this.settlementId = settlementId;
+    }
+    
+    /**
+     * Gets the settlement ID for this build mode session.
+     * @return Settlement ID, or null if not set
+     */
+    public UUID getSettlementId() {
+        return settlementId;
     }
     
     /**
@@ -39,6 +51,7 @@ public class BuildModeHandler {
         this.selectedStructure = null;
         this.placementPos = null;
         this.rotation = 0;
+        this.settlementId = null;
     }
     
     /**

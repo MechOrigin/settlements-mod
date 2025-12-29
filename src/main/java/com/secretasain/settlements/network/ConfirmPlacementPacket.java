@@ -59,15 +59,34 @@ public class ConfirmPlacementPacket {
                             return;
                         }
                         
-                        // Find settlement at placement position
+                        // CRITICAL: Get settlement from build mode handler (the settlement whose screen was open)
+                        // This ensures buildings are added to the correct settlement, not just any settlement containing the position
                         ServerWorld world = player.getServerWorld();
-                        Settlement settlement = SettlementManager.getInstance(world).findSettlementAt(placementPos);
+                        SettlementManager manager = SettlementManager.getInstance(world);
+                        Settlement settlement = null;
+                        
+                        UUID settlementId = handler.getSettlementId();
+                        if (settlementId != null) {
+                            // Use the settlement ID from build mode handler (the settlement whose screen was open)
+                            settlement = manager.getSettlement(settlementId);
+                            if (settlement == null) {
+                                SettlementsMod.LOGGER.warn("ConfirmPlacementPacket: Settlement {} from build mode handler not found! Falling back to findSettlementAt", settlementId);
+                            } else {
+                                SettlementsMod.LOGGER.info("ConfirmPlacementPacket: Using settlement {} (lectern at {}) from build mode handler for building at {}", 
+                                    settlement.getId(), settlement.getLecternPos(), placementPos);
+                            }
+                        }
+                        
+                        // Fallback: Find settlement at placement position if handler doesn't have settlement ID
                         if (settlement == null) {
-                            // Try to find settlement at lectern position (if player is near a lectern)
-                            // For now, we'll require the structure to be within an existing settlement
-                            SettlementsMod.LOGGER.warn("Cannot place building: position {} is not within any settlement", placementPos);
-                            player.sendMessage(net.minecraft.text.Text.literal("Cannot place building: must be within a settlement"), false);
-                            return;
+                            settlement = manager.findSettlementAt(placementPos);
+                            if (settlement == null) {
+                                SettlementsMod.LOGGER.warn("Cannot place building: position {} is not within any settlement", placementPos);
+                                player.sendMessage(net.minecraft.text.Text.literal("Cannot place building: must be within a settlement"), false);
+                                return;
+                            }
+                            SettlementsMod.LOGGER.info("ConfirmPlacementPacket: Found settlement {} (lectern at {}) for building at {} using findSettlementAt fallback", 
+                                settlement.getId(), settlement.getLecternPos(), placementPos);
                         }
                         
                         // Verify structure is within settlement bounds
@@ -113,11 +132,22 @@ public class ConfirmPlacementPacket {
                         // Add building to settlement
                         settlement.getBuildings().add(building);
                         
+                        // DEBUG: Log building addition
+                        SettlementsMod.LOGGER.info("ConfirmPlacementPacket: Added building {} to settlement {} (total buildings: {})", 
+                            building.getId(), settlement.getId(), settlement.getBuildings().size());
+                        
+                        // CRITICAL: Mark settlement as dirty so building is persisted
+                        SettlementManager.getInstance(world).markDirty();
+                        
                         // Place barrier blocks
                         placeBarriers(building, handler.getSelectedStructure(), world, placementPos, rotation);
                         
                         // Place ghost blocks to show structure preview
                         placeGhostBlocks(building, handler.getSelectedStructure(), world, placementPos, rotation);
+                        
+                        // CRITICAL: Send settlement update to client so building appears in UI
+                        // This ensures the building list is updated when the screen is open
+                        com.secretasain.settlements.network.SyncBuildingStatusPacket.sendToPlayer(player, settlement, building);
                         
                         // Deactivate build mode on server
                         handler.deactivateBuildMode();

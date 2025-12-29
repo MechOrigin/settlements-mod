@@ -64,6 +64,14 @@ public class BuildingOutputDataPacket {
                         return;
                     }
                     
+                    // CRITICAL: Only get outputs for COMPLETED buildings
+                    if (building.getStatus() != com.secretasain.settlements.building.BuildingStatus.COMPLETED) {
+                        SettlementsMod.LOGGER.debug("Cannot get building output data: building {} is not COMPLETED (status: {})", 
+                            buildingId, building.getStatus());
+                        sendResponse(player, buildingId, null, -1, null);
+                        return;
+                    }
+                    
                     // Check if building has assigned villagers - no villagers = no outputs
                     List<com.secretasain.settlements.settlement.VillagerData> assignedVillagers = 
                         com.secretasain.settlements.settlement.WorkAssignmentManager.getVillagersAssignedToBuilding(settlement, buildingId);

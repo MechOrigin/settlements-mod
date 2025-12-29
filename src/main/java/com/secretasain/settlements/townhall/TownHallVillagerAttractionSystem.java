@@ -6,77 +6,78 @@ import com.secretasain.settlements.settlement.Settlement;
 import com.secretasain.settlements.settlement.SettlementManager;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.entity.EntityType;
-import net.minecraft.entity.passive.WanderingTraderEntity;
+import net.minecraft.entity.passive.VillagerEntity;
+import net.minecraft.registry.Registries;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.village.VillagerData;
+import net.minecraft.village.VillagerProfession;
+import net.minecraft.village.VillagerType;
 
 import java.util.*;
 
 /**
- * System that periodically attempts to spawn wandering traders near active town halls.
- * This is a more reliable approach than relying solely on mixins.
+ * System that periodically attempts to spawn villagers near town halls WITHOUT librarian requirement.
+ * Uses the same 15% chance system as wandering traders.
+ * Villagers spawned this way will be tracked and may despawn with enderman teleport effect.
  */
-public class WanderingTraderSpawnSystem {
-    private static final int SPAWN_CHECK_INTERVAL = 60; // Check every 30 seconds (30 seconds)
-    private static final double BASE_SPAWN_CHANCE = 0.15; // 25% chance per check when town hall is active
+public class TownHallVillagerAttractionSystem {
+    private static final int SPAWN_CHECK_INTERVAL = 60; // Check every 3 seconds (60 ticks = 3 seconds)
+    private static final double BASE_SPAWN_CHANCE = 0.15; // 15% chance per check (same as wandering traders)
     private static final int MIN_SPAWN_INTERVAL = 2400; // Minimum 2 minutes between spawns per town hall
-    private static final int MAX_WANDERING_TRADERS = 5; // Maximum number of wandering traders allowed in the world
+    private static final int MAX_ATTRACTED_VILLAGERS = 5; // Maximum number of attracted villagers per town hall
     
     private static final Map<UUID, Long> lastSpawnTimeByTownHall = new HashMap<>();
     
     public static void register() {
         ServerTickEvents.END_WORLD_TICK.register(world -> {
             if (world.getServer().getTicks() % SPAWN_CHECK_INTERVAL == 0) {
-                checkAndSpawnTraders(world);
+                checkAndSpawnVillagers(world);
             }
         });
         
-        SettlementsMod.LOGGER.info("WanderingTraderSpawnSystem registered - will check for trader spawns every {} ticks ({} seconds)", 
+        SettlementsMod.LOGGER.info("TownHallVillagerAttractionSystem registered - will check for villager spawns every {} ticks ({} seconds)", 
             SPAWN_CHECK_INTERVAL, SPAWN_CHECK_INTERVAL / 20);
     }
     
-    private static void checkAndSpawnTraders(ServerWorld world) {
+    private static void checkAndSpawnVillagers(ServerWorld world) {
         if (world.getPlayers().isEmpty()) {
             return; // No players, don't spawn
-        }
-        
-        // Check global maximum wandering trader count
-        int currentTraderCount = countWanderingTradersInWorld(world);
-        if (currentTraderCount >= MAX_WANDERING_TRADERS) {
-            SettlementsMod.LOGGER.debug("Maximum wandering traders reached ({}/{}) - skipping spawn check", 
-                currentTraderCount, MAX_WANDERING_TRADERS);
-            return; // Already at max, don't spawn more
         }
         
         SettlementManager manager = SettlementManager.getInstance(world);
         Collection<Settlement> settlements = manager.getAllSettlements();
         
-        // Check if there is at least one trading hut built
-        if (!hasTradingHut(settlements)) {
-            SettlementsMod.LOGGER.debug("No trading huts found - wandering traders will not spawn");
-            return; // No trading huts, don't spawn traders
-        }
-        
         long currentTime = world.getTime();
         List<Building> activeTownHalls = new ArrayList<>();
         
-        // Find all COMPLETED active town halls
+        // Find all COMPLETED town halls WITHOUT librarian requirement
         for (Settlement settlement : settlements) {
             for (Building building : settlement.getBuildings()) {
                 if (TownHallDetector.isTownHall(building)) {
-                    // CRITICAL: Only spawn traders for COMPLETED town halls
+                    // CRITICAL: Only attract villagers to COMPLETED town halls
+                    // Do not attract during RESERVED, IN_PROGRESS, or any other status
                     if (building.getStatus() != com.secretasain.settlements.building.BuildingStatus.COMPLETED) {
                         continue; // Skip non-completed town halls
                     }
                     
                     TownHallData hallData = TownHallData.getOrCreate(building);
-                    if (hallData.hasLibrarian()) {
-                        // Check if enough time has passed since last spawn
-                        UUID buildingId = building.getId();
-                        Long lastSpawn = lastSpawnTimeByTownHall.get(buildingId);
-                        if (lastSpawn == null || (currentTime - lastSpawn) >= MIN_SPAWN_INTERVAL) {
-                            activeTownHalls.add(building);
+                    
+                    // Check if town hall has NO librarian (this is the key difference from TownHallVillagerSpawner)
+                    // We want to attract villagers to town halls that don't have librarians yet
+                    if (!hallData.hasLibrarian()) {
+                        // Count currently attracted villagers (not spawned by librarian system)
+                        int attractedVillagerCount = countAttractedVillagers(world, building, hallData);
+                        
+                        // Check if we're under the max (5 villagers max, but aim for 2-3 visible)
+                        if (attractedVillagerCount < MAX_ATTRACTED_VILLAGERS) {
+                            // Check if enough time has passed since last spawn
+                            UUID buildingId = building.getId();
+                            Long lastSpawn = lastSpawnTimeByTownHall.get(buildingId);
+                            if (lastSpawn == null || (currentTime - lastSpawn) >= MIN_SPAWN_INTERVAL) {
+                                activeTownHalls.add(building);
+                            }
                         }
                     }
                 }
@@ -84,26 +85,25 @@ public class WanderingTraderSpawnSystem {
         }
         
         if (activeTownHalls.isEmpty()) {
-            SettlementsMod.LOGGER.debug("No active town halls ready for wandering trader spawn (all on cooldown or no librarians)");
             return; // No active town halls ready to spawn
         }
         
-        SettlementsMod.LOGGER.info("Checking {} active town halls for wandering trader spawn (chance: {}%, current traders: {}/{})", 
-            activeTownHalls.size(), (int)(BASE_SPAWN_CHANCE * 100), currentTraderCount, MAX_WANDERING_TRADERS);
+        SettlementsMod.LOGGER.debug("Checking {} town halls (without librarians) for villager attraction (chance: {}%, max: {})", 
+            activeTownHalls.size(), (int)(BASE_SPAWN_CHANCE * 100), MAX_ATTRACTED_VILLAGERS);
         
         // Try to spawn near each active town hall
         for (Building townHall : activeTownHalls) {
-            // Check spawn chance
+            // Check spawn chance (15% same as wandering traders)
             if (world.getRandom().nextDouble() < BASE_SPAWN_CHANCE) {
                 BlockPos spawnPos = findSpawnPositionNearTownHall(world, townHall.getPosition());
                 if (spawnPos != null) {
                     try {
-                        WanderingTraderEntity trader = EntityType.WANDERING_TRADER.create(world);
-                        if (trader == null) {
+                        VillagerEntity villager = EntityType.VILLAGER.create(world);
+                        if (villager == null) {
                             continue;
                         }
                         
-                        trader.refreshPositionAndAngles(
+                        villager.refreshPositionAndAngles(
                             spawnPos.getX() + 0.5,
                             spawnPos.getY(),
                             spawnPos.getZ() + 0.5,
@@ -111,19 +111,33 @@ public class WanderingTraderSpawnSystem {
                             0.0f
                         );
                         
-                        if (world.spawnEntity(trader)) {
+                        // Set villager to adult (not baby)
+                        villager.setBreedingAge(0);
+                        
+                        // Set profession to NONE (jobless villager)
+                        VillagerType villagerType = Registries.VILLAGER_TYPE.getRandom(world.getRandom())
+                            .map(ref -> ref.value())
+                            .orElse(VillagerType.PLAINS);
+                        VillagerData villagerData = new VillagerData(
+                            villagerType,
+                            VillagerProfession.NONE,
+                            1 // Level 1
+                        );
+                        villager.setVillagerData(villagerData);
+                        
+                        if (world.spawnEntity(villager)) {
                             // Record spawn time
                             lastSpawnTimeByTownHall.put(townHall.getId(), currentTime);
                             
-                            // Record for despawn tracking
-                            WanderingTraderDespawnHandler.recordTraderSpawn(trader);
+                            // Record for despawn tracking (50/50 chance to stay or leave)
+                            TownHallVillagerDespawnHandler.recordAttractedVillager(villager, townHall.getId());
                             
-                            SettlementsMod.LOGGER.info("Spawned wandering trader {} near town hall {} at {} (tick {})",
-                                trader.getUuid(), townHall.getId(), spawnPos, currentTime);
+                            SettlementsMod.LOGGER.info("Spawned attracted villager {} near town hall {} at {} (tick {})",
+                                villager.getUuid(), townHall.getId(), spawnPos, currentTime);
                             break; // Only spawn one per check
                         }
                     } catch (Exception e) {
-                        SettlementsMod.LOGGER.error("Failed to spawn wandering trader near town hall {}: {}",
+                        SettlementsMod.LOGGER.error("Failed to spawn attracted villager near town hall {}: {}",
                             townHall.getId(), e.getMessage(), e);
                     }
                 } else {
@@ -131,6 +145,36 @@ public class WanderingTraderSpawnSystem {
                 }
             }
         }
+    }
+    
+    /**
+     * Counts the number of villagers currently attracted to this town hall.
+     * Only counts villagers tracked by the attraction system (not librarian-spawned villagers).
+     */
+    private static int countAttractedVillagers(ServerWorld world, Building townHall, TownHallData hallData) {
+        // Count villagers within a reasonable radius of the town hall that were attracted by this system
+        BlockPos townHallPos = townHall.getPosition();
+        Box searchBox = new Box(townHallPos).expand(64.0); // 64 block radius
+        
+        List<VillagerEntity> nearbyVillagers = world.getEntitiesByType(
+            EntityType.VILLAGER,
+            searchBox,
+            villager -> {
+                // Check if villager is within reasonable distance
+                double distanceSq = villager.getBlockPos().getSquaredDistance(townHallPos);
+                return distanceSq <= 64 * 64; // Within 64 blocks
+            }
+        );
+        
+        // Count only villagers tracked by the despawn handler (attracted villagers)
+        int count = 0;
+        for (VillagerEntity villager : nearbyVillagers) {
+            if (TownHallVillagerDespawnHandler.isAttractedVillager(villager.getUuid(), townHall.getId())) {
+                count++;
+            }
+        }
+        
+        return count;
     }
     
     /**
@@ -175,12 +219,8 @@ public class WanderingTraderSpawnSystem {
     /**
      * Finds the ground level at a given X/Z position.
      * Prioritizes searching downward to avoid spawning on top of buildings.
-     * @param world The server world
-     * @param pos The position (Y will be adjusted)
-     * @return Ground position or null if not found
      */
     private static BlockPos findGroundLevel(ServerWorld world, BlockPos pos) {
-        // Start from building Y level + 2 (slightly above building) and search down
         int startY = Math.min(pos.getY() + 2, world.getTopY() - 1);
         int minY = world.getBottomY();
         
@@ -189,8 +229,6 @@ public class WanderingTraderSpawnSystem {
             BlockPos testPos = new BlockPos(pos.getX(), y, pos.getZ());
             BlockPos groundPos = testPos.down();
             
-            // Check if this is a valid ground position
-            // Ground must be solid, spawn position and above must be air
             if (world.getBlockState(groundPos).isOpaque() &&
                 world.getBlockState(testPos).isAir() &&
                 world.getBlockState(testPos.up()).isAir()) {
@@ -199,7 +237,6 @@ public class WanderingTraderSpawnSystem {
         }
         
         // If no ground found below, try searching up (only as last resort)
-        // This handles cases where building is below ground level
         for (int y = startY + 1; y <= world.getTopY() - 1; y++) {
             BlockPos testPos = new BlockPos(pos.getX(), y, pos.getZ());
             BlockPos groundPos = testPos.down();
@@ -215,11 +252,7 @@ public class WanderingTraderSpawnSystem {
     }
     
     /**
-     * Checks if position is safe for spawning a wandering trader.
-     * Ensures ground is a safe surface block (dirt, grass, path, etc.) and not on top of buildings.
-     * @param world The server world
-     * @param pos The position to check
-     * @return true if position is safe
+     * Checks if position is safe for spawning a villager.
      */
     private static boolean isSafeSpawnPosition(ServerWorld world, BlockPos pos) {
         net.minecraft.block.BlockState groundState = world.getBlockState(pos.down());
@@ -230,11 +263,8 @@ public class WanderingTraderSpawnSystem {
         }
         
         // Check if ground is a safe surface block (dirt, grass, path, etc.)
-        // Avoid spawning on stone, wood planks, or other building materials
         net.minecraft.block.Block groundBlock = groundState.getBlock();
         
-        // Safe ground blocks: dirt variants, grass, path, sand, gravel, etc.
-        // Unsafe: stone, wood planks, bricks, concrete, etc. (building materials)
         boolean isSafeGround = groundBlock == net.minecraft.block.Blocks.DIRT ||
             groundBlock == net.minecraft.block.Blocks.GRASS_BLOCK ||
             groundBlock == net.minecraft.block.Blocks.PODZOL ||
@@ -251,7 +281,7 @@ public class WanderingTraderSpawnSystem {
             groundBlock == net.minecraft.block.Blocks.SOUL_SOIL;
         
         if (!isSafeGround) {
-            return false; // Not a safe ground surface
+            return false;
         }
         
         // Must have air at spawn position and above
@@ -259,10 +289,10 @@ public class WanderingTraderSpawnSystem {
             return false;
         }
         
-        // Check for existing traders nearby (within 32 blocks)
-        Box searchBox = new Box(pos).expand(32.0);
-        if (!world.getEntitiesByType(EntityType.WANDERING_TRADER, searchBox, e -> true).isEmpty()) {
-            return false; // Trader already nearby
+        // Check for existing villagers nearby (within 16 blocks)
+        Box searchBox = new Box(pos).expand(16.0);
+        if (!world.getEntitiesByType(EntityType.VILLAGER, searchBox, e -> true).isEmpty()) {
+            return false; // Villager already nearby
         }
         
         // Avoid spawning in water/lava
@@ -272,50 +302,6 @@ public class WanderingTraderSpawnSystem {
         }
         
         return true;
-    }
-    
-    /**
-     * Checks if there is at least one trading hut built in any settlement.
-     * @param settlements All settlements in the world
-     * @return true if at least one trading hut exists
-     */
-    private static boolean hasTradingHut(Collection<Settlement> settlements) {
-        for (Settlement settlement : settlements) {
-            for (Building building : settlement.getBuildings()) {
-                if (isTraderHut(building)) {
-                    return true; // Found at least one trading hut
-                }
-            }
-        }
-        return false; // No trading huts found
-    }
-    
-    /**
-     * Checks if a building is a trader hut.
-     * @param building The building to check
-     * @return true if the building is a trader hut
-     */
-    private static boolean isTraderHut(Building building) {
-        if (building == null || building.getStructureType() == null) {
-            return false;
-        }
-        
-        String structurePath = building.getStructureType().getPath();
-        // Check if structure name contains "trader_hut" or "traderhut"
-        return structurePath.contains("trader_hut") || structurePath.contains("traderhut");
-    }
-    
-    /**
-     * Counts all wandering traders currently in the world.
-     * @param world The server world
-     * @return Number of wandering traders in the world
-     */
-    private static int countWanderingTradersInWorld(ServerWorld world) {
-        net.minecraft.util.math.Box worldBounds = new net.minecraft.util.math.Box(
-            Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY,
-            Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY
-        );
-        return world.getEntitiesByType(EntityType.WANDERING_TRADER, worldBounds, e -> true).size();
     }
 }
 

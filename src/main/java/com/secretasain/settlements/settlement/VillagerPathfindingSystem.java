@@ -19,6 +19,8 @@ public class VillagerPathfindingSystem {
     private static final double WORK_RADIUS_SQ = WORK_RADIUS * WORK_RADIUS; // Squared distance for comparison
     private static final double LUMBERYARD_WORK_RADIUS = 32.0; // Lumberyard villagers can work within 32 blocks (for tree harvesting)
     private static final double LUMBERYARD_WORK_RADIUS_SQ = LUMBERYARD_WORK_RADIUS * LUMBERYARD_WORK_RADIUS;
+    private static final long NIGHT_START_TICK = 12000; // Dusk (6 PM) - same as VillagerSleepSystem
+    private static final long DAY_START_TICK = 0; // Dawn (6 AM) - same as VillagerSleepSystem
     
     /**
      * Registers the pathfinding system with Fabric's server tick events.
@@ -37,6 +39,13 @@ public class VillagerPathfindingSystem {
         // Only run periodically to avoid performance issues
         if (world.getTime() % PATHFINDING_INTERVAL_TICKS != 0) {
             return;
+        }
+        
+        // Skip rallying at night - let VillagerSleepSystem handle movement to beds
+        long timeOfDay = world.getTimeOfDay() % 24000;
+        boolean isNighttime = timeOfDay >= NIGHT_START_TICK || timeOfDay < DAY_START_TICK;
+        if (isNighttime) {
+            return; // Don't rally villagers at night - they should be going to bed
         }
         
         SettlementManager manager = SettlementManager.getInstance(world);
@@ -106,6 +115,11 @@ public class VillagerPathfindingSystem {
             VillagerEntity villager = getVillagerEntity(world, villagerData.getEntityId());
             if (villager == null) {
                 continue; // Villager not loaded or doesn't exist
+            }
+            
+            // Skip if villager is sleeping or going to bed (VillagerSleepSystem is handling them)
+            if (villager.isSleeping()) {
+                continue; // Let them sleep
             }
             
             // Calculate target position (building center)

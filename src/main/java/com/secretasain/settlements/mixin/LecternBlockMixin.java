@@ -65,11 +65,27 @@ public class LecternBlockMixin {
                 // Create new settlement on first interaction
                 settlement = manager.createSettlement(pos, "New Settlement", 64);
             } else {
-                SettlementsMod.LOGGER.info("Found existing settlement: {}", settlement.getName());
+                SettlementsMod.LOGGER.info("Found existing settlement: {} (ID: {}) with {} buildings at lectern {}", 
+                    settlement.getName(), settlement.getId(), settlement.getBuildings().size(), pos);
+                // DEBUG: Log all buildings in settlement
+                for (com.secretasain.settlements.settlement.Building building : settlement.getBuildings()) {
+                    SettlementsMod.LOGGER.info("  - Building {}: {} at {} (status: {})", 
+                        building.getId(), building.getStructureType(), building.getPosition(), building.getStatus());
+                }
+                
+                // DEBUG: Also check if there are buildings in other settlements
+                SettlementsMod.LOGGER.info("Total settlements in manager: {}", manager.getAllSettlements().size());
+                for (com.secretasain.settlements.settlement.Settlement otherSettlement : manager.getAllSettlements()) {
+                    if (!otherSettlement.getId().equals(settlement.getId()) && !otherSettlement.getBuildings().isEmpty()) {
+                        SettlementsMod.LOGGER.warn("  - Other settlement {} (lectern at {}) has {} buildings!", 
+                            otherSettlement.getId(), otherSettlement.getLecternPos(), otherSettlement.getBuildings().size());
+                    }
+                }
             }
             
             // Open the settlements UI on the client via network packet
-            SettlementsMod.LOGGER.info("Sending open screen packet to player");
+            SettlementsMod.LOGGER.info("Sending open screen packet to player (settlement has {} buildings)", 
+                settlement.getBuildings().size());
             com.secretasain.settlements.network.OpenSettlementScreenPacket.send(serverPlayer, settlement);
             
             // Cancel the default lectern interaction

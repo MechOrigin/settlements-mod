@@ -13,7 +13,7 @@ import java.util.*;
  */
 public class WanderingTraderDespawnHandler {
     private static final int CHECK_INTERVAL = 20; // Check every 1 second (20 ticks) - more frequent for better despawn
-    private static final long TRADER_LIFETIME = 3000; // 10 minutes at 20 TPS (12000 ticks = 600 seconds)
+    private static final long TRADER_LIFETIME = 60; // 10 minutes at 20 TPS (12000 ticks = 600 seconds)
     
     // Track traders and their spawn time
     private static final Map<UUID, Long> TRADER_SPAWN_TIMES = new HashMap<>();

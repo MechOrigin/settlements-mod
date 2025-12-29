@@ -30,8 +30,22 @@ public class ClientNetworkHandler {
                     
                     Settlement settlement = Settlement.fromNbt(settlementNbt);
                     
+                    // DEBUG: Log building count after deserialization
                     SettlementsMod.LOGGER.info("Opening settlement screen for: {} at {} with {} buildings", 
                         settlement.getName(), settlement.getLecternPos(), settlement.getBuildings().size());
+                    for (com.secretasain.settlements.settlement.Building building : settlement.getBuildings()) {
+                        SettlementsMod.LOGGER.info("  - Building {}: {} at {} (status: {})", 
+                            building.getId(), building.getStructureType(), building.getPosition(), building.getStatus());
+                    }
+                    
+                    // DEBUG: Verify NBT had buildings
+                    if (settlementNbt.contains("buildings", 9)) { // 9 = NbtList
+                        net.minecraft.nbt.NbtList buildingList = settlementNbt.getList("buildings", 10); // 10 = NbtCompound
+                        SettlementsMod.LOGGER.info("ClientNetworkHandler: NBT had {} buildings, deserialized to {} buildings", 
+                            buildingList.size(), settlement.getBuildings().size());
+                    } else {
+                        SettlementsMod.LOGGER.warn("ClientNetworkHandler: NBT did NOT contain buildings list!");
+                    }
                     
                     // Log building materials for debugging
                     for (com.secretasain.settlements.settlement.Building building : settlement.getBuildings()) {

@@ -116,6 +116,11 @@ public class FarmComposterSystem {
                 continue;
             }
             
+            // CRITICAL: Only process COMPLETED buildings
+            if (building.getStatus() != com.secretasain.settlements.building.BuildingStatus.COMPLETED) {
+                continue; // Skip non-completed buildings
+            }
+            
             // Get all villagers assigned to this farm
             List<VillagerData> assignedVillagers = WorkAssignmentManager.getVillagersAssignedToBuilding(
                 settlement, building.getId()

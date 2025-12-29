@@ -88,6 +88,12 @@ public class StructureData {
                     int paletteIndex = blockNbt.contains("state", 3) ? blockNbt.getInt("state") : 0;
                     BlockState state = palette.getOrDefault(paletteIndex, net.minecraft.block.Blocks.AIR.getDefaultState());
                     
+                    // CRITICAL: Skip barrier blocks - they cause invisible collision blocks
+                    // Barrier blocks should never be placed from NBT structures
+                    if (state.getBlock() == net.minecraft.block.Blocks.BARRIER) {
+                        continue; // Skip this block entirely
+                    }
+                    
                     // Get block entity data (if present)
                     NbtCompound blockEntityData = blockNbt.contains("nbt", 10) ? blockNbt.getCompound("nbt") : null;
                     
@@ -95,8 +101,8 @@ public class StructureData {
                     blocks.add(structureBlock);
                     buildOrder.add(relativePos);
                     
-                    // Count materials (skip air blocks - they're not required materials)
-                    if (!state.isAir()) {
+                    // Count materials (skip air blocks and barrier blocks - they're not required materials)
+                    if (!state.isAir() && state.getBlock() != net.minecraft.block.Blocks.BARRIER) {
                         materialCount.put(state, materialCount.getOrDefault(state, 0) + 1);
                     }
                 }
