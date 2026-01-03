@@ -12,6 +12,7 @@ import com.secretasain.settlements.network.DeactivateBuildModePacket;
 import com.secretasain.settlements.network.StructureDataPacket;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.rendering.v1.BlockEntityRendererRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 
 public class SettlementsModClient implements ClientModInitializer {
@@ -23,6 +24,8 @@ public class SettlementsModClient implements ClientModInitializer {
 		ClientNetworkHandler.register();
 		StructureDataPacket.register();
 		DeactivateBuildModePacket.register();
+		com.secretasain.settlements.network.OpenNpcInteractionScreenPacketClient.register();
+		com.secretasain.settlements.network.SyncWarbandNpcsPacketClient.register();
 		
 		// Register build mode keybinds
 		// NOTE: Keybinds are registered but only active when build mode is active
@@ -45,6 +48,12 @@ public class SettlementsModClient implements ClientModInitializer {
 		
 		// Register ghost block renderer (for block entity)
 		BlockEntityRendererRegistry.register(ModBlocks.GHOST_BLOCK_ENTITY, GhostBlockRenderer::new);
+		
+		// Register warband NPC entity renderer
+		EntityRendererRegistry.register(
+			com.secretasain.settlements.warband.ModEntities.WARBAND_NPC,
+			com.secretasain.settlements.warband.WarbandNpcEntityRenderer::new
+		);
 		
 		// Register general-purpose ghost block rendering system
 		GhostBlockRenderHandler.register();

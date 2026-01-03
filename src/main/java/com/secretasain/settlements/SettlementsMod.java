@@ -26,6 +26,9 @@ public class SettlementsMod implements ModInitializer {
 		// Register blocks
 		com.secretasain.settlements.block.ModBlocks.register();
 		
+		// Register custom entities
+		com.secretasain.settlements.warband.ModEntities.register();
+		
 		// Register villager scanning system
 		com.secretasain.settlements.settlement.VillagerScanningSystem.register();
 		
@@ -83,6 +86,9 @@ public class SettlementsMod implements ModInitializer {
 		// Register villager death/despawn event handlers
 		com.secretasain.settlements.settlement.VillagerEventHandlers.register();
 		
+		// Register warband NPC death/despawn event handlers
+		com.secretasain.settlements.warband.WarbandNpcEventHandlers.register();
+		
 		// Register block placement scheduler
 		com.secretasain.settlements.building.BlockPlacementScheduler.register();
 		
@@ -94,6 +100,10 @@ public class SettlementsMod implements ModInitializer {
 		com.secretasain.settlements.network.CheckMaterialsPacket.register();
 		com.secretasain.settlements.network.UnloadInventoryPacket.register();
 		com.secretasain.settlements.network.HireFireVillagerPacket.register();
+		com.secretasain.settlements.network.HireNpcPacket.register();
+		com.secretasain.settlements.network.DismissNpcPacket.register();
+		com.secretasain.settlements.network.NpcCommandPacket.register();
+		com.secretasain.settlements.network.RequestWarbandNpcsPacket.register();
 		com.secretasain.settlements.network.AssignWorkPacket.register();
 		com.secretasain.settlements.network.AssignGolemPacket.register();
 		com.secretasain.settlements.network.BuildingOutputDataPacket.register();

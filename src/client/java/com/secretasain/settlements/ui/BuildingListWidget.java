@@ -540,6 +540,19 @@ public class BuildingListWidget extends AlwaysSelectedEntryListWidget {
             );
             textY += lineHeight;
             
+            // Draw position coordinates BETWEEN name and status
+            BlockPos pos = building.getPosition();
+            String posText = String.format("%d, %d, %d", pos.getX(), pos.getY(), pos.getZ());
+            context.drawText(
+                client.textRenderer,
+                Text.literal(posText),
+                textX, // Use same textX as building name so coordinates appear below it
+                textY,
+                0xAAAAAA, // Gray color for coordinates
+                true // Use shadow for better visibility on dark background
+            );
+            textY += lineHeight;
+            
             // Draw status with color coding
             BuildingStatus status = building.getStatus();
             String statusText = status.name();
@@ -568,7 +581,7 @@ public class BuildingListWidget extends AlwaysSelectedEntryListWidget {
             context.drawText(
                 client.textRenderer,
                 Text.literal(statusText),
-                textX, // Use same textX as building name so status appears below it
+                textX, // Use same textX as building name so status appears below coordinates
                 textY,
                 statusColor,
                 true // Use shadow for better visibility on dark background
@@ -662,25 +675,8 @@ public class BuildingListWidget extends AlwaysSelectedEntryListWidget {
                 context.drawTooltip(client.textRenderer, java.util.List.of(Text.literal("Delete reservation")), mouseX, mouseY);
             }
             
-            // Draw position on the right (but leave space for buttons)
-            // Apply UI formatting rules: proper spacing between elements
-            BlockPos pos = building.getPosition();
-            String posText = String.format("(%d, %d, %d)", pos.getX(), pos.getY(), pos.getZ());
-            int posWidth = client.textRenderer.getWidth(posText);
-            // Apply UI formatting rules: minimum 4px spacing between text and buttons
-            int spacing = 4;
-            int posX = deleteButtonX - posWidth - spacing;
-            if (status == BuildingStatus.RESERVED) {
-                posX -= START_BUTTON_SIZE + BUTTON_SPACING; // Additional spacing for start button
-            }
-            context.drawText(
-                client.textRenderer,
-                Text.literal(posText),
-                posX,
-                y + padding,
-                0xAAAAAA,
-                true // Use shadow for better visibility on dark background
-            );
+            // Position coordinates are now drawn between name and status (see above)
+            // Removed old position drawing code that was on the right side
             
             // Draw progress if in progress (use lineHeight for proper spacing)
             if (status == BuildingStatus.IN_PROGRESS) {
@@ -689,8 +685,8 @@ public class BuildingListWidget extends AlwaysSelectedEntryListWidget {
                 context.drawText(
                     client.textRenderer,
                     Text.literal(progressText),
-                    posX,
-                    y + padding + lineHeight, // Use lineHeight for consistent spacing
+                    textX, // Use same textX as other text elements
+                    textY, // Use current textY position (after status)
                     0xAAAAAA,
                     true // Use shadow for better visibility on dark background
                 );

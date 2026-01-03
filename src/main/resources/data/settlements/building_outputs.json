@@ -27,6 +27,9 @@
           "max_count": 2
         }
       ]
+    },
+    "barracks": {
+      "outputs": []
     }
   }
 }

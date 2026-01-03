@@ -65,7 +65,8 @@ public enum StructureCategory {
         
         // Defensive structures
         if (lower.contains("wall") || lower.contains("gate") || lower.contains("tower") || 
-            lower.contains("fort") || lower.contains("barrier") || lower.contains("fence")) {
+            lower.contains("fort") || lower.contains("barrier") || lower.contains("fence") ||
+            lower.contains("barracks")) {
             return DEFENSIVE;
         }
         

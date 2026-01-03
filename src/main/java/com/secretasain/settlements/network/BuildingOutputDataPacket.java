@@ -242,6 +242,10 @@ public class BuildingOutputDataPacket {
         if (lowerName.contains("farm") || lowerName.contains("farmland")) {
             return "farm";
         }
+        // Check for barracks (before wall check, since "barracks" doesn't contain "wall")
+        if (lowerName.contains("barracks")) {
+            return "barracks";
+        }
         // Check for wall/fence/gate (defensive structures)
         if (lowerName.contains("wall") || lowerName.contains("fence") || lowerName.contains("gate")) {
             return "wall";

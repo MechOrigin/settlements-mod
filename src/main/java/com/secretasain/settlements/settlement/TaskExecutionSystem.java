@@ -226,6 +226,8 @@ public class TaskExecutionSystem {
     private static String determineBuildingType(String structureName) {
         if (structureName.contains("wall") || structureName.contains("fence") || structureName.contains("gate")) {
             return "wall";
+        } else if (structureName.contains("barracks")) {
+            return "barracks"; // Barracks don't produce outputs (NPC hiring only)
         } else if (structureName.contains("smithing") || structureName.contains("smith")) {
             return "smithing";
         } else if (structureName.contains("farm") || structureName.contains("farmland")) {

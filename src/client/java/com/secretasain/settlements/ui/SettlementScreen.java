@@ -39,6 +39,7 @@ public class SettlementScreen extends Screen {
     private ButtonWidget overviewTabButton;
     private ButtonWidget buildingsTabButton;
     private ButtonWidget villagersTabButton;
+    private ButtonWidget warbandTabButton;
     private ButtonWidget settingsTabButton;
     
     // Villager list widget
@@ -79,6 +80,23 @@ public class SettlementScreen extends Screen {
     private int materialListY = -1; // -1 means use default
     private int materialListWidth = 200; // Default width - larger for better visibility
     private int materialListHeight = 180; // Default height - larger for better visibility
+    
+    // Warband tab widgets
+    private BuildingListWidget warbandBarracksListWidget; // List of barracks buildings
+    private com.secretasain.settlements.settlement.Building selectedBarracks; // Currently selected barracks
+    private WarbandPanelWidget warriorPanel;
+    private WarbandPanelWidget priestPanel;
+    private WarbandPanelWidget magePanel;
+    private HiredNpcListWidget hiredNpcListWidget; // List of hired NPCs
+    
+    /**
+     * Refreshes the hired NPC list widget with latest data from server.
+     */
+    public void refreshHiredNpcList() {
+        if (activeTab == TabType.WARBAND && selectedBarracks != null) {
+            createHiredNpcListWidget();
+        }
+    }
 
     public SettlementScreen(Settlement settlement) {
         super(Text.translatable("settlements.ui.title"));
@@ -95,8 +113,8 @@ public class SettlementScreen extends Screen {
         int x = (this.width - screenWidth) / 2;
         int y = (this.height - screenHeight) / 2;
         
-        // Create tab buttons - better spacing for larger screen
-        int tabButtonWidth = 90;
+        // Create tab buttons - reduced width to fit 5 tabs (70*5 + 4*5 = 370px, fits in 400px)
+        int tabButtonWidth = 70;
         int tabButtonHeight = 20;
         int tabY = y + 5;
         int tabSpacing = 5; // Space between buttons
@@ -116,14 +134,20 @@ public class SettlementScreen extends Screen {
             button -> switchTab(TabType.VILLAGERS)
         ).dimensions(x + 5 + (tabButtonWidth + tabSpacing) * 2, tabY, tabButtonWidth, tabButtonHeight).build();
         
+        this.warbandTabButton = ButtonWidget.builder(
+            Text.translatable("settlements.ui.tab.warband"),
+            button -> switchTab(TabType.WARBAND)
+        ).dimensions(x + 5 + (tabButtonWidth + tabSpacing) * 3, tabY, tabButtonWidth, tabButtonHeight).build();
+        
         this.settingsTabButton = ButtonWidget.builder(
             Text.translatable("settlements.ui.tab.settings"),
             button -> switchTab(TabType.SETTINGS)
-        ).dimensions(x + 5 + (tabButtonWidth + tabSpacing) * 3, tabY, tabButtonWidth, tabButtonHeight).build();
+        ).dimensions(x + 5 + (tabButtonWidth + tabSpacing) * 4, tabY, tabButtonWidth, tabButtonHeight).build();
         
         this.addDrawableChild(overviewTabButton);
         this.addDrawableChild(buildingsTabButton);
         this.addDrawableChild(villagersTabButton);
+        this.addDrawableChild(warbandTabButton);
         this.addDrawableChild(settingsTabButton);
         
         // Create villager list widget (initially hidden)
@@ -887,6 +911,19 @@ public class SettlementScreen extends Screen {
             }
         }
         
+        // Render warband panels if warband tab is active
+        if (activeTab == TabType.WARBAND) {
+            if (warriorPanel != null) {
+                warriorPanel.render(context, mouseX, mouseY, delta);
+            }
+            if (priestPanel != null) {
+                priestPanel.render(context, mouseX, mouseY, delta);
+            }
+            if (magePanel != null) {
+                magePanel.render(context, mouseX, mouseY, delta);
+            }
+        }
+        
         // Explicitly render building list widget if it exists and is in children (for debugging)
         if (activeTab == TabType.BUILDINGS && buildingListWidget != null) {
             if (this.children().contains(buildingListWidget)) {
@@ -1134,6 +1171,31 @@ public class SettlementScreen extends Screen {
                     );
                 }
                 break;
+            case WARBAND:
+                // Draw title
+                context.drawText(
+                    this.textRenderer, 
+                    Text.translatable("settlements.warband.title"), 
+                    x + 10, 
+                    y, 
+                    0xFFFFFF, 
+                    false
+                );
+                
+                // Show message if no barracks buildings
+                if (warbandBarracksListWidget == null || settlement.getBuildings().stream()
+                    .noneMatch(b -> b.getStatus() == com.secretasain.settlements.building.BuildingStatus.COMPLETED &&
+                                   b.getStructureType().getPath().toLowerCase().contains("barracks"))) {
+                    context.drawText(
+                        this.textRenderer, 
+                        Text.translatable("settlements.warband.no_barracks"), 
+                        x + 10, 
+                        y + lineHeight, 
+                        0xCCCCCC, 
+                        false
+                    );
+                }
+                break;
             case VILLAGERS:
                 // Draw title
                 context.drawText(
@@ -1222,11 +1284,39 @@ public class SettlementScreen extends Screen {
             // Close other tab widgets when switching to Overview or Settings
             closeBuildingWidgets();
             closeVillagerWidgets();
+            closeWarbandWidgets();
             
             // Overview and Settings tabs display information directly from settlement object
             // The settlement object is kept up-to-date through various network packets,
             // so the displayed information will reflect the current state
             // No additional refresh needed - data is read fresh on each render
+            return;
+        }
+        
+        // Handle Warband tab
+        if (tab == TabType.WARBAND) {
+            // Close other tab widgets when switching to warband tab
+            closeBuildingWidgets();
+            closeVillagerWidgets();
+            
+            // Ensure buildingListWidget is removed (it shouldn't be visible on warband tab)
+            if (buildingListWidget != null) {
+                try {
+                    this.remove(buildingListWidget);
+                } catch (Exception e) {
+                    // Ignore if already removed
+                }
+                this.children().removeIf(child -> child == buildingListWidget);
+                buildingListWidget = null;
+            }
+            
+            // Create and show warband tab content
+            createWarbandTabContent();
+            
+            // Request NPC sync when opening warband tab
+            if (selectedBarracks != null && this.client.player != null && this.client.getNetworkHandler() != null) {
+                com.secretasain.settlements.network.RequestWarbandNpcsPacketClient.send(selectedBarracks.getId());
+            }
             return;
         }
         
@@ -1237,8 +1327,9 @@ public class SettlementScreen extends Screen {
         boolean showBuildings = (tab == TabType.BUILDINGS);
         
         if (showBuildings) {
-            // Close villager widgets when switching to buildings tab
+            // Close other tab widgets when switching to buildings tab
             closeVillagerWidgets();
+            closeWarbandWidgets();
             
             // Create and add structure selection widget when Buildings tab is active
             createStructureListWidget();
@@ -1280,8 +1371,9 @@ public class SettlementScreen extends Screen {
                     buildStructureButton.getX(), buildStructureButton.getY());
             }
         } else if (tab == TabType.VILLAGERS) {
-            // Close building widgets when switching to villagers tab
+            // Close other tab widgets when switching to villagers tab
             closeBuildingWidgets();
+            closeWarbandWidgets();
             
             // Create and show building assignment widget as a permanent sidebar (similar to structure list widget)
             createBuildingAssignmentSidebar();
@@ -3130,6 +3222,12 @@ public class SettlementScreen extends Screen {
                 // Update action buttons
                 updateBuildingActionButtons();
                 break;
+            case WARBAND:
+                // Refresh warband barracks list widget
+                if (warbandBarracksListWidget != null) {
+                    warbandBarracksListWidget.updateEntries();
+                }
+                break;
             case VILLAGERS:
                 // Refresh villager list widget
                 if (villagerListWidget != null) {
@@ -3356,10 +3454,311 @@ public class SettlementScreen extends Screen {
         }
     }
     
+    /**
+     * Closes all warband-related widgets when switching away from Warband tab.
+     */
+    private void closeWarbandWidgets() {
+        // Remove warband barracks list widget
+        if (warbandBarracksListWidget != null) {
+            try {
+                this.remove(warbandBarracksListWidget);
+            } catch (Exception e) {
+                // Ignore if already removed
+            }
+            this.children().removeIf(child -> child == warbandBarracksListWidget);
+            warbandBarracksListWidget = null;
+        }
+        
+        // Remove hired NPC list widget
+        if (hiredNpcListWidget != null) {
+            try {
+                this.remove(hiredNpcListWidget);
+            } catch (Exception e) {
+                // Ignore if already removed
+            }
+            this.children().removeIf(child -> child == hiredNpcListWidget);
+            hiredNpcListWidget = null;
+        }
+        
+        // Remove all buttons that belong to warband panels
+        // Panels store references to their buttons, so we need to remove them explicitly
+        if (warriorPanel != null) {
+            removePanelButtons(warriorPanel);
+            warriorPanel = null;
+        }
+        if (priestPanel != null) {
+            removePanelButtons(priestPanel);
+            priestPanel = null;
+        }
+        if (magePanel != null) {
+            removePanelButtons(magePanel);
+            magePanel = null;
+        }
+        
+        selectedBarracks = null;
+    }
+    
+    /**
+     * Helper method to remove buttons from a warband panel.
+     */
+    private void removePanelButtons(WarbandPanelWidget panel) {
+        // Remove buttons using the panel's button references
+        for (ButtonWidget button : panel.getButtons()) {
+            if (button != null) {
+                try {
+                    this.remove(button);
+                } catch (Exception e) {
+                    // Ignore if already removed
+                }
+                this.children().removeIf(child -> child == button);
+            }
+        }
+    }
+    
+    /**
+     * Creates the warband tab content - shows barracks buildings and warband management panels.
+     */
+    private void createWarbandTabContent() {
+        if (activeTab != TabType.WARBAND) {
+            return;
+        }
+        
+        int screenWidth = 400;
+        int screenHeight = 280;
+        int x = (this.width - screenWidth) / 2;
+        int y = (this.height - screenHeight) / 2;
+        
+        // Get all completed barracks buildings
+        List<com.secretasain.settlements.settlement.Building> barracksBuildings = settlement.getBuildings().stream()
+            .filter(b -> b.getStatus() == com.secretasain.settlements.building.BuildingStatus.COMPLETED)
+            .filter(b -> {
+                String structureName = b.getStructureType().getPath().toLowerCase();
+                return structureName.contains("barracks");
+            })
+            .collect(java.util.stream.Collectors.toList());
+        
+        // Create barracks list widget in the same position as other left-side widgets (structureListWidget, buildingSelectionWidget)
+        int sidebarWidth = 180;
+        int sidebarX = x - sidebarWidth - 15; // 15px gap from main window (same as structureListWidget)
+        int sidebarY = y; // Align exactly with main window top
+        int sidebarHeight = screenHeight; // Match main window height exactly
+        int sidebarTitleHeight = 20;
+        int sidebarPadding = 5; // Padding inside sidebar
+        int sidebarListY = sidebarY + sidebarTitleHeight + sidebarPadding; // Start below title bar with padding
+        int sidebarListHeight = sidebarHeight - sidebarTitleHeight - sidebarPadding * 2; // Fill remaining space with padding
+        int contentWidth = sidebarWidth - sidebarPadding * 2; // Width with padding on both sides
+        int widgetXOffset = 22; // Same offset as structureListWidget for alignment
+        
+        int listX = sidebarX + sidebarPadding + widgetXOffset;
+        int listY = sidebarListY;
+        int listHeight = sidebarListHeight;
+        int listWidth = contentWidth;
+        
+        // Remove old widget if exists
+        if (warbandBarracksListWidget != null) {
+            this.remove(warbandBarracksListWidget);
+        }
+        
+        warbandBarracksListWidget = new BuildingListWidget(
+            this.client,
+            listWidth,
+            listHeight,
+            listY,
+            listY + listHeight,
+            40,
+            barracksBuildings
+        );
+        warbandBarracksListWidget.setLeftPos(listX);
+        
+        // Set selection callback
+        warbandBarracksListWidget.setOnSelectionChangedCallback(building -> {
+            selectedBarracks = building;
+            createWarbandPanels(building);
+            // Request NPC sync when barracks selection changes
+            if (this.client.player != null && this.client.getNetworkHandler() != null) {
+                com.secretasain.settlements.network.RequestWarbandNpcsPacketClient.send(building.getId());
+            }
+            createHiredNpcListWidget(); // Update hired NPC list when barracks changes
+        });
+        
+        this.addDrawableChild(warbandBarracksListWidget);
+        
+        // Auto-select first barracks if available
+        if (!barracksBuildings.isEmpty() && selectedBarracks == null) {
+            if (!warbandBarracksListWidget.children().isEmpty()) {
+                @SuppressWarnings("unchecked")
+                net.minecraft.client.gui.widget.AlwaysSelectedEntryListWidget.Entry<?> firstEntry = 
+                    (net.minecraft.client.gui.widget.AlwaysSelectedEntryListWidget.Entry<?>) warbandBarracksListWidget.children().get(0);
+                warbandBarracksListWidget.setSelected(firstEntry);
+                selectedBarracks = barracksBuildings.get(0);
+                createWarbandPanels(selectedBarracks);
+            }
+        } else if (selectedBarracks != null) {
+            createWarbandPanels(selectedBarracks);
+        }
+        
+        // Create hired NPC list widget on the right side
+        createHiredNpcListWidget();
+    }
+    
+    /**
+     * Creates the hired NPC list widget showing all NPCs hired at the selected barracks.
+     */
+    private void createHiredNpcListWidget() {
+        if (selectedBarracks == null || activeTab != TabType.WARBAND) {
+            return;
+        }
+        
+        // Remove old widget if exists
+        if (hiredNpcListWidget != null) {
+            this.remove(hiredNpcListWidget);
+        }
+        
+        int screenWidth = 400;
+        int screenHeight = 280;
+        int x = (this.width - screenWidth) / 2;
+        int y = (this.height - screenHeight) / 2;
+        
+        // Position on right side of screen
+        int sidebarWidth = 180;
+        int sidebarX = x + screenWidth + 15; // 15px gap from main window
+        int sidebarY = y;
+        int sidebarHeight = screenHeight;
+        int sidebarTitleHeight = 20;
+        int sidebarPadding = 5;
+        int sidebarListY = sidebarY + sidebarTitleHeight + sidebarPadding;
+        int sidebarListHeight = sidebarHeight - sidebarTitleHeight - sidebarPadding * 2;
+        int contentWidth = sidebarWidth - sidebarPadding * 2;
+        int widgetXOffset = 22;
+        
+        int listX = sidebarX + sidebarPadding + widgetXOffset;
+        int listY = sidebarListY;
+        int listHeight = sidebarListHeight;
+        int listWidth = contentWidth;
+        
+        // Get hired NPCs from cached server data
+        List<com.secretasain.settlements.warband.NpcData> hiredNpcs = 
+            com.secretasain.settlements.network.SyncWarbandNpcsPacketClient.getNpcsForBarracks(selectedBarracks.getId());
+        
+        // Request update from server if we don't have data yet
+        if (hiredNpcs.isEmpty() && this.client.player != null && this.client.getNetworkHandler() != null) {
+            // Request NPC sync from server
+            com.secretasain.settlements.network.RequestWarbandNpcsPacketClient.send(selectedBarracks.getId());
+        }
+        
+        hiredNpcListWidget = new HiredNpcListWidget(
+            this.client,
+            listWidth,
+            listHeight,
+            listY,
+            listY + listHeight,
+            50, // Increased item height to accommodate button below text
+            hiredNpcs
+        );
+        hiredNpcListWidget.setLeftPos(listX);
+        hiredNpcListWidget.setOnDismissCallback(this::onDismissNpc);
+        
+        this.addDrawableChild(hiredNpcListWidget);
+    }
+    
+    /**
+     * Creates the warband panels (Warrior, Priest, Mage) for the selected barracks.
+     */
+    private void createWarbandPanels(com.secretasain.settlements.settlement.Building barracks) {
+        if (barracks == null || activeTab != TabType.WARBAND) {
+            return;
+        }
+        
+        // Remove existing panel buttons - panels will recreate their buttons
+        // We don't need to track buttons separately since panels manage them
+        
+        int screenWidth = 400;
+        int screenHeight = 280;
+        int x = (this.width - screenWidth) / 2;
+        int y = (this.height - screenHeight) / 2;
+        
+        // Create three panels at bottom center (moved down to bottom of screen)
+        int panelWidth = 100;
+        int panelHeight = 120;
+        int panelSpacing = 10;
+        int totalWidth = panelWidth * 3 + panelSpacing * 2;
+        int panelStartX = x + (screenWidth - totalWidth) / 2;
+        // Position panels at bottom of screen with some padding from bottom edge
+        int bottomPadding = 10; // Padding from bottom edge
+        int panelY = (y + screenHeight) - panelHeight - bottomPadding;
+        
+        // Warrior panel (implemented)
+            warriorPanel = new WarbandPanelWidget(
+            this.client,
+            panelStartX,
+            panelY,
+            panelWidth,
+            panelHeight,
+            com.secretasain.settlements.warband.NpcClass.WARRIOR,
+            this::onHireNpc,
+            null // Dismiss handled by HiredNpcListWidget
+        );
+        warriorPanel.initButtons(button -> this.addDrawableChild(button));
+        
+        // Priest panel (not implemented - grayed out)
+        priestPanel = new WarbandPanelWidget(
+            this.client,
+            panelStartX + panelWidth + panelSpacing,
+            panelY,
+            panelWidth,
+            panelHeight,
+            com.secretasain.settlements.warband.NpcClass.PRIEST,
+            null,
+            null
+        );
+        priestPanel.setEnabled(false);
+        priestPanel.initButtons(button -> this.addDrawableChild(button));
+        
+        // Mage panel (not implemented - grayed out)
+        magePanel = new WarbandPanelWidget(
+            this.client,
+            panelStartX + (panelWidth + panelSpacing) * 2,
+            panelY,
+            panelWidth,
+            panelHeight,
+            com.secretasain.settlements.warband.NpcClass.MAGE,
+            null,
+            null
+        );
+        magePanel.setEnabled(false);
+        magePanel.initButtons(button -> this.addDrawableChild(button));
+    }
+    
+    /**
+     * Called when player clicks to hire an NPC.
+     */
+    private void onHireNpc(com.secretasain.settlements.warband.NpcClass npcClass, com.secretasain.settlements.warband.ParagonLevel paragonLevel) {
+        if (selectedBarracks == null) {
+            return;
+        }
+        // Send HireNpcPacket to server
+        com.secretasain.settlements.network.HireNpcPacketClient.send(
+            selectedBarracks.getId(),
+            settlement.getId(),
+            npcClass,
+            paragonLevel
+        );
+    }
+    
+    /**
+     * Called when player clicks to dismiss an NPC.
+     */
+    private void onDismissNpc(UUID entityId) {
+        // Send dismiss packet to server
+        com.secretasain.settlements.network.DismissNpcPacketClient.send(entityId);
+        // Widget will be updated when server sends updated data
+    }
+    
     enum TabType {
         OVERVIEW,
         BUILDINGS,
         VILLAGERS,
+        WARBAND,
         SETTINGS
     }
 }
