@@ -6,6 +6,7 @@ import com.secretasain.settlements.block.GhostBlockRenderer;
 import com.secretasain.settlements.block.GhostBlockRenderHandler;
 import com.secretasain.settlements.block.GhostBlockSyncHandler;
 import com.secretasain.settlements.block.ModBlocks;
+import com.secretasain.settlements.config.UIDebugKeybind;
 import com.secretasain.settlements.network.ClientNetworkHandler;
 import com.secretasain.settlements.network.DeactivateBuildModePacket;
 import com.secretasain.settlements.network.StructureDataPacket;
@@ -28,8 +29,19 @@ public class SettlementsModClient implements ClientModInitializer {
 		// The tick handler returns immediately when build mode is inactive to avoid interfering with normal game controls
 		BuildModeKeybinds.register();
 		
+		// Register UI debug keybind (F9 to toggle debug titles)
+		UIDebugKeybind.register();
+		
+		// Register building debug outline keybind (F10 to toggle debug outlines)
+		com.secretasain.settlements.debug.BuildingDebugKeybind.register();
+		
 		// Register build mode renderer
 		BuildModeRenderer.register();
+		
+		// Register building debug outline renderer
+		net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents.AFTER_TRANSLUCENT.register(
+			com.secretasain.settlements.debug.BuildingDebugOutlineRenderer::render
+		);
 		
 		// Register ghost block renderer (for block entity)
 		BlockEntityRendererRegistry.register(ModBlocks.GHOST_BLOCK_ENTITY, GhostBlockRenderer::new);

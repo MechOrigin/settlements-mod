@@ -66,6 +66,9 @@ public class GolemListWidget extends AlwaysSelectedEntryListWidget<GolemListWidg
         // Draw border matching main window style
         context.drawBorder(x - 5, y - 5, width + 10, height + 10, 0xFF404040);
         
+        // Render debug title if enabled
+        UIDebugRenderer.renderWidgetTitle(context, "GolemListWidget", x, y, width);
+        
         // Enable scissor clipping to constrain rendering within widget bounds
         context.enableScissor(x, y, x + width, y + height);
         

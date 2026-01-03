@@ -536,11 +536,20 @@ public class BuildingOutputWidget extends AlwaysSelectedEntryListWidget<Building
         int width = this.width;
         int height = this.bottom - this.top;
         
+        // Apply UI formatting rules: bounds checking
+        if (x < 0 || y < 0 || width <= 0 || height <= 0) {
+            return; // Invalid bounds, skip rendering
+        }
+        
         // Draw background
         context.fill(x - 5, y - 5, x + width + 5, y + height + 5, 0xFF101010);
         context.drawBorder(x - 5, y - 5, width + 10, height + 10, 0xFF404040);
         
+        // Render debug title if enabled
+        UIDebugRenderer.renderWidgetTitle(context, "BuildingOutputWidget", x, y, width);
+        
         // Draw title (positioned above the widget with proper spacing)
+        // Apply UI formatting rules: proper title spacing (4-8 pixels margin)
         String titleText = "Building Outputs";
         if ("farm".equals(buildingType)) {
             titleText = "Farm Statistics";
@@ -548,33 +557,38 @@ public class BuildingOutputWidget extends AlwaysSelectedEntryListWidget<Building
             titleText += " (" + outputEntries.size() + ")";
         }
         int titleWidth = this.client.textRenderer.getWidth(titleText);
-        int titleY = y - 15; // Position title above widget with spacing
+        int titleY = y - this.client.textRenderer.fontHeight - 4; // 4px spacing from widget top
         context.drawText(
             this.client.textRenderer,
             Text.literal(titleText),
             x + (width - titleWidth) / 2, // Center the title
             titleY,
             0xFFFFFF,
-            false
+            true
         );
         
         // Show message if no outputs (but only if not a farm - farms show their own entries)
         if (!"farm".equals(buildingType) && (outputEntries == null || outputEntries.isEmpty())) {
             String noOutputsText = "No outputs configured";
             int textWidth = this.client.textRenderer.getWidth(noOutputsText);
+            int padding = 4; // Apply UI formatting rules: widget padding
             context.drawText(
                 this.client.textRenderer,
                 Text.literal(noOutputsText),
                 x + (width - textWidth) / 2,
-                y + 10,
+                y + padding + this.client.textRenderer.fontHeight,
                 0xAAAAAA,
-                false
+                true
             );
             // Still render entries if they exist (for farm buildings)
             if (this.children().isEmpty()) {
                 return;
             }
         }
+        
+        // Apply UI formatting rules: use scissor clipping to prevent list overflow
+        // Use DrawContext.enableScissor() which handles coordinate conversion properly
+        context.enableScissor(x, y, x + width, y + height);
         
         // Render entries
         int scrollAmount = (int)this.getScrollAmount();
@@ -605,6 +619,9 @@ public class BuildingOutputWidget extends AlwaysSelectedEntryListWidget<Building
                 }
             }
         }
+        
+        // Disable scissor after rendering entries
+        context.disableScissor();
         
         // Second pass: render tooltip for the hovered entry only (if any)
         // CRITICAL: Use static lock to prevent multiple tooltips from rendering simultaneously
@@ -662,10 +679,12 @@ public class BuildingOutputWidget extends AlwaysSelectedEntryListWidget<Building
             clearTooltipState();
         }
         
-        // Render scrollbar if needed
+        // Render scrollbar if needed (outside scissor area)
+        // Apply UI formatting rules: reserve 6-8 pixels width for scrollbar
         int maxScroll = this.getMaxScroll();
         if (maxScroll > 0) {
-            int scrollbarX = x + width - 6;
+            int scrollbarWidth = 6;
+            int scrollbarX = x + width - scrollbarWidth;
             int scrollbarHeight = Math.max(4, (int)((height / (float)(maxScroll + height)) * height));
             int scrollbarY = y + (int)((scrollAmount / (float)maxScroll) * (height - scrollbarHeight));
             context.fill(scrollbarX, scrollbarY, scrollbarX + 4, scrollbarY + scrollbarHeight, 0x80FFFFFF);
@@ -742,7 +761,9 @@ public class BuildingOutputWidget extends AlwaysSelectedEntryListWidget<Building
             // Handle custom message
             if (customMessage != null) {
                 // Determine text color based on crop maturity
-                int textColor = 0xAAAAAA;
+                // Default to white for better visibility on dark background
+                // Minecraft drawText uses RGB format (0xRRGGBB), not ARGB
+                int textColor = 0xFFFFFF; // White
                 if (cropStats != null) {
                     double maturityPercent = cropStats.getMaturityPercentage();
                     if (maturityPercent >= 0.7) {
@@ -750,17 +771,32 @@ public class BuildingOutputWidget extends AlwaysSelectedEntryListWidget<Building
                     } else if (maturityPercent >= 0.3) {
                         textColor = 0xFFFFAA; // Light yellow
                     } else {
-                        textColor = 0xAAAAAA; // Gray
+                        textColor = 0xCCCCCC; // Light gray
                     }
                 }
                 
+                // Apply UI formatting rules: proper padding (4 pixels)
+                int padding = 4;
+                // Center text vertically within entry height
+                int textHeight = client.textRenderer.fontHeight;
+                int textY = y + (entryHeight - textHeight) / 2; // Center vertically
+                int textX = x + padding;
+                
+                // Debug: Log if entry is being rendered (can be removed after testing)
+                if (customMessage.contains("Farmland") || customMessage.contains("Total") || customMessage.contains("Active")) {
+                    com.secretasain.settlements.SettlementsMod.LOGGER.info("Rendering farm stat entry: '{}' at ({}, {}) entryHeight={}, textHeight={}, color=0x{:06X}, entryBounds=({}, {}) to ({}, {})", 
+                        customMessage, textX, textY, entryHeight, textHeight, String.format("0x%06X", textColor), x, y, x + entryWidth, y + entryHeight);
+                }
+                
+                // Ensure rendering state is correct before drawing text
+                // Render text with shadow for better visibility
                 context.drawText(
                     client.textRenderer,
                     Text.literal(customMessage),
-                    x + 5,
-                    y + 3,
+                    textX,
+                    textY,
                     textColor,
-                    false
+                    true // Shadow for better visibility
                 );
                 
                 // Draw progress bar for crop entries
@@ -773,10 +809,15 @@ public class BuildingOutputWidget extends AlwaysSelectedEntryListWidget<Building
             // Get item name
             String itemName = item != null ? item.getName().getString() : "Unknown";
             
+            // Apply UI formatting rules: proper padding and icon spacing
+            int padding = 4;
+            int iconSize = 16;
+            int iconSpacing = 4; // Minimum 4px spacing between icon and text
+            
             // Draw item icon (small, 16x16)
             if (item != null) {
                 ItemStack stack = new ItemStack(item);
-                context.drawItem(stack, x + 5, y + 1);
+                context.drawItem(stack, x + padding, y + padding);
             }
             
             // Draw item name and count range
@@ -784,36 +825,46 @@ public class BuildingOutputWidget extends AlwaysSelectedEntryListWidget<Building
                 ? String.format("%d", minCount)
                 : String.format("%d-%d", minCount, maxCount);
             String itemText = String.format("%s (%s)", itemName, countText);
+            int textX = x + padding;
+            if (item != null) {
+                textX += iconSize + iconSpacing; // After icon with spacing
+            }
             context.drawText(
                 client.textRenderer,
                 Text.literal(itemText),
-                x + 25, // After icon
-                y + 3,
+                textX,
+                y + padding,
                 0xFFFFFF,
-                false
+                true
             );
             
-            // Draw items per minute
+            // Draw items per minute (right-aligned)
             String rateText = String.format("%.2f/min", itemsPerMinute);
             int rateTextWidth = client.textRenderer.getWidth(rateText);
             context.drawText(
                 client.textRenderer,
                 Text.literal(rateText),
-                x + entryWidth - rateTextWidth - 5,
-                y + 3,
+                x + entryWidth - rateTextWidth - padding,
+                y + padding,
                 0x00FF00, // Green color for rate
-                false
+                true
             );
             
             // Draw weight/probability on second line
+            // Apply UI formatting rules: use lineHeight for proper spacing
+            int lineHeight = client.textRenderer.fontHeight + 2;
             String weightText = String.format("Weight: %d", weight);
+            int weightTextX = x + padding;
+            if (item != null) {
+                weightTextX += iconSize + iconSpacing; // Align with item name above
+            }
             context.drawText(
                 client.textRenderer,
                 Text.literal(weightText),
-                x + 25,
-                y + 13,
+                weightTextX,
+                y + padding + lineHeight, // Use lineHeight for consistent spacing
                 0xCCCCCC,
-                false
+                true
             );
         }
         

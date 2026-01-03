@@ -105,6 +105,9 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
         // Draw border matching main window style (0xFF404040)
         context.drawBorder(x - 5, y - 5, width + 10, height + 10, 0xFF404040);
         
+        // Render debug title if enabled
+        UIDebugRenderer.renderWidgetTitle(context, "VillagerListWidget", x, y, width);
+        
         // Enable scissor clipping to constrain rendering within widget bounds
         context.enableScissor(x, y, x + width, y + height);
         
@@ -255,6 +258,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
             }
             
             // Draw villager name - better spacing
+            // Apply UI formatting rules: use shadow=true for dark backgrounds (improves readability)
             Text nameText = villager.getName() != null && !villager.getName().isEmpty() 
                 ? Text.literal(villager.getName())
                 : Text.translatable("settlements.ui.villagers.unnamed");
@@ -265,7 +269,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                 x + 5,
                 y + 3,
                 0xFFFFFF,
-                false
+                true // Use shadow for better visibility on dark background
             );
             
             // Draw profession - better spacing
@@ -288,13 +292,14 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                 professionText = Text.translatable("settlements.ui.villagers.profession.none");
             }
             
+            // Apply UI formatting rules: use shadow=true for dark backgrounds
             context.drawText(
                 MinecraftClient.getInstance().textRenderer,
                 professionText,
                 x + 5,
                 y + 15,
                 0xCCCCCC,
-                false
+                true // Use shadow for better visibility on dark background
             );
             
             // Draw employment status - better positioning with more spacing
@@ -303,13 +308,14 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                 : Text.translatable("settlements.ui.villagers.status.unemployed");
             int statusColor = villager.isEmployed() ? 0x00FF00 : 0xFFAA00;
             
+            // Apply UI formatting rules: use shadow=true for dark backgrounds
             context.drawText(
                 MinecraftClient.getInstance().textRenderer,
                 statusText,
                 x + 5,
                 y + 27,
                 statusColor,
-                false
+                true // Use shadow for better visibility on dark background
             );
             
             // Draw work assignment status for employed villagers OR hiring cost for unemployed
@@ -348,6 +354,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                             structureName = structureName.substring(0, 1).toUpperCase() + structureName.substring(1);
                         }
                         
+                        // Apply UI formatting rules: use shadow=true for dark backgrounds
                         Text buildingText = Text.translatable("settlements.ui.villagers.assigned_to", structureName);
                         context.drawText(
                             MinecraftClient.getInstance().textRenderer,
@@ -355,7 +362,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                             x + 5,
                             y + yOffset,
                             0x00AAFF,
-                            false
+                            true // Use shadow for better visibility on dark background
                         );
                         
                         // Show building position
@@ -369,7 +376,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                             x + 5,
                             y + yOffset,
                             0xAAAAAA,
-                            false
+                            true // Use shadow for better visibility on dark background
                         );
                     } else {
                         // Building not found - show generic assigned text
@@ -380,7 +387,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                             x + 5,
                             y + yOffset,
                             0x00AAFF,
-                            false
+                            true // Use shadow for better visibility on dark background
                         );
                     }
                 } else {
@@ -392,7 +399,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                         x + 5,
                         y + yOffset,
                         0xFFAA00,
-                        false
+                        true // Use shadow for better visibility on dark background
                     );
                 }
             } else {
@@ -405,13 +412,14 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                 context.drawItem(emeraldStack, x + 5, y + 38);
                 
                 // Draw cost text next to emerald (item icon is 16x16, so start at x+22)
+                // Apply UI formatting rules: use shadow=true for dark backgrounds
                 context.drawText(
                     MinecraftClient.getInstance().textRenderer,
                     costText,
                     x + 22,
                     y + 42,
                     0x00FF00,
-                    false
+                    true // Use shadow for better visibility on dark background
                 );
             }
             
@@ -594,6 +602,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
             }
             
             // Draw golem name
+            // Apply UI formatting rules: use shadow=true for dark backgrounds (improves readability)
             Text nameText = golem.getName() != null && !golem.getName().isEmpty() 
                 ? Text.literal(golem.getName())
                 : Text.translatable("settlements.ui.golems.unnamed");
@@ -604,18 +613,17 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                 x + 5,
                 y + 3,
                 0xFFFFFF,
-                false
+                true // Use shadow for better visibility on dark background
             );
             
             // Draw "Iron Golem" label
-            Text typeText = Text.literal("Iron Golem");
             context.drawText(
                 MinecraftClient.getInstance().textRenderer,
-                typeText,
+                Text.literal("Iron Golem"),
                 x + 5,
                 y + 15,
                 0xCCCCCC,
-                false
+                true // Use shadow for better visibility on dark background
             );
             
             // Draw assignment status
@@ -656,7 +664,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                         x + 5,
                         y + yOffset,
                         0x00AAFF,
-                        false
+                        true // Use shadow for better visibility on dark background
                     );
                 } else {
                     Text assignmentText = Text.translatable("settlements.ui.golems.assigned");
@@ -666,7 +674,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                         x + 5,
                         y + yOffset,
                         0x00AAFF,
-                        false
+                        true // Use shadow for better visibility on dark background
                     );
                 }
             } else {
@@ -677,7 +685,7 @@ public class VillagerListWidget extends AlwaysSelectedEntryListWidget {
                     x + 5,
                     y + yOffset,
                     0xFFAA00,
-                    false
+                    true // Use shadow for better visibility on dark background
                 );
             }
             

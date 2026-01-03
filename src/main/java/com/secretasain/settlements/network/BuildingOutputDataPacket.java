@@ -2,6 +2,7 @@ package com.secretasain.settlements.network;
 
 import com.secretasain.settlements.SettlementsMod;
 import com.secretasain.settlements.building.StructureData;
+import com.secretasain.settlements.building.StructureBlock;
 import com.secretasain.settlements.building.StructureLoader;
 import com.secretasain.settlements.settlement.Building;
 import com.secretasain.settlements.settlement.BuildingOutputConfig;
@@ -259,28 +260,37 @@ public class BuildingOutputDataPacket {
     
     /**
      * Counts farmland blocks in a building's structure.
+     * Note: In NBT structure files, farmland is often stored as dirt/grass blocks.
+     * We count both actual farmland blocks and dirt/grass blocks that represent farmland.
      */
     private static int countFarmlandInStructure(Building building, ServerWorld world) {
         try {
             StructureData structureData = StructureLoader.loadStructure(building.getStructureType(), world.getServer());
             if (structureData == null) {
+                SettlementsMod.LOGGER.warn("countFarmlandInStructure: structureData is null for building {}", building.getId());
                 return 0;
             }
             
             int count = 0;
             for (var block : structureData.getBlocks()) {
                 net.minecraft.block.BlockState state = block.getBlockState();
-                // Check if it's farmland by checking the block registry ID
-                net.minecraft.util.Identifier blockId = net.minecraft.registry.Registries.BLOCK.getId(state.getBlock());
-                if (blockId != null && (blockId.getPath().contains("farmland") || 
-                    blockId.toString().equals("minecraft:farmland"))) {
+                net.minecraft.block.Block blockType = state.getBlock();
+                
+                // Check if it's farmland using instanceof for reliable detection (works for vanilla and modded farmland)
+                // Also count dirt/grass blocks as farmland, since NBT structures often store farmland as dirt
+                if (blockType instanceof FarmlandBlock ||
+                    blockType == net.minecraft.block.Blocks.DIRT ||
+                    blockType == net.minecraft.block.Blocks.GRASS_BLOCK ||
+                    blockType == net.minecraft.block.Blocks.COARSE_DIRT ||
+                    blockType == net.minecraft.block.Blocks.PODZOL) {
                     count++;
                 }
             }
             
+            SettlementsMod.LOGGER.info("countFarmlandInStructure: Found {} farmland/dirt blocks in structure {} (representing farmland)", count, building.getStructureType());
             return count;
         } catch (Exception e) {
-            SettlementsMod.LOGGER.warn("Failed to count farmland in structure: {}", e.getMessage());
+            SettlementsMod.LOGGER.warn("Failed to count farmland in structure: {}", e.getMessage(), e);
             return 0;
         }
     }
@@ -303,61 +313,66 @@ public class BuildingOutputDataPacket {
             // Get building position and rotation
             BlockPos buildingPos = building.getPosition();
             int rotation = building.getRotation();
-            Vec3i size = structureData.getDimensions();
             
             // Map to collect crop data: cropType -> (age -> count)
             Map<String, Map<Integer, Integer>> cropData = new HashMap<>();
             Map<String, Identifier> cropItemIds = new HashMap<>();
             Map<String, Integer> cropMaxAges = new HashMap<>();
             
-            // Scan all blocks in the structure area
-            for (int x = 0; x < size.getX(); x++) {
-                for (int y = 0; y < size.getY(); y++) {
-                    for (int z = 0; z < size.getZ(); z++) {
-                        BlockPos relativePos = new BlockPos(x, y, z);
-                        
-                        // Apply rotation to relative position
-                        BlockPos rotatedPos = rotatePosition(relativePos, size, rotation);
-                        
-                        // Convert to world position
-                        BlockPos worldPos = buildingPos.add(rotatedPos);
-                        
-                        // Check if chunk is loaded
-                        if (!world.getChunkManager().isChunkLoaded(worldPos.getX() >> 4, worldPos.getZ() >> 4)) {
+            // CRITICAL: Iterate through actual structure blocks (same as BlockPlacementScheduler)
+            // This ensures we scan exactly the same area where blocks were placed, including rotation
+            for (net.minecraft.util.math.BlockPos relativePos : structureData.getBuildOrder()) {
+                StructureBlock structureBlock = structureData.getBlockAt(relativePos);
+                if (structureBlock == null) {
+                    continue;
+                }
+                
+                // Apply rotation to relative position (same formula as BlockPlacementScheduler)
+                BlockPos rotatedPos = applyRotation(relativePos, rotation, structureData.getDimensions());
+                
+                // Calculate absolute world position
+                BlockPos worldPos = buildingPos.add(rotatedPos);
+                
+                // Check if chunk is loaded
+                if (!world.getChunkManager().isChunkLoaded(worldPos.getX() >> 4, worldPos.getZ() >> 4)) {
+                    continue;
+                }
+                
+                // Check if this structure block is farmland (from the NBT structure)
+                BlockState structureBlockState = structureBlock.getBlockState();
+                if (structureBlockState.getBlock() instanceof FarmlandBlock ||
+                    structureBlockState.getBlock() == net.minecraft.block.Blocks.DIRT ||
+                    structureBlockState.getBlock() == net.minecraft.block.Blocks.GRASS_BLOCK) {
+                    // This position should be farmland - check if it actually is farmland in the world
+                    BlockState worldBlockState = world.getBlockState(worldPos);
+                    Block worldBlock = worldBlockState.getBlock();
+                    
+                    // Check if this is farmland in the world
+                    if (worldBlock instanceof FarmlandBlock) {
+                        // Check the block above for crops
+                        BlockPos cropPos = worldPos.up();
+                        if (!world.getChunkManager().isChunkLoaded(cropPos.getX() >> 4, cropPos.getZ() >> 4)) {
                             continue;
                         }
                         
-                        // Get block state
-                        BlockState blockState = world.getBlockState(worldPos);
-                        Block block = blockState.getBlock();
+                        BlockState cropState = world.getBlockState(cropPos);
+                        Block cropBlock = cropState.getBlock();
                         
-                        // Check if this is farmland
-                        if (block instanceof FarmlandBlock) {
-                            // Check the block above for crops
-                            BlockPos cropPos = worldPos.up();
-                            if (!world.getChunkManager().isChunkLoaded(cropPos.getX() >> 4, cropPos.getZ() >> 4)) {
-                                continue;
-                            }
+                        // Get crop type and age
+                        CropInfo cropInfo = getCropInfo(cropState, cropBlock);
+                        if (cropInfo != null) {
+                            String cropType = cropInfo.type;
+                            int age = cropInfo.age;
+                            int maxAge = cropInfo.maxAge;
                             
-                            BlockState cropState = world.getBlockState(cropPos);
-                            Block cropBlock = cropState.getBlock();
+                            // Initialize maps if needed
+                            cropData.putIfAbsent(cropType, new HashMap<>());
+                            cropItemIds.putIfAbsent(cropType, cropInfo.itemId);
+                            cropMaxAges.putIfAbsent(cropType, maxAge);
                             
-                            // Get crop type and age
-                            CropInfo cropInfo = getCropInfo(cropState, cropBlock);
-                            if (cropInfo != null) {
-                                String cropType = cropInfo.type;
-                                int age = cropInfo.age;
-                                int maxAge = cropInfo.maxAge;
-                                
-                                // Initialize maps if needed
-                                cropData.putIfAbsent(cropType, new HashMap<>());
-                                cropItemIds.putIfAbsent(cropType, cropInfo.itemId);
-                                cropMaxAges.putIfAbsent(cropType, maxAge);
-                                
-                                // Count this crop
-                                Map<Integer, Integer> ageMap = cropData.get(cropType);
-                                ageMap.put(age, ageMap.getOrDefault(age, 0) + 1);
-                            }
+                            // Count this crop
+                            Map<Integer, Integer> ageMap = cropData.get(cropType);
+                            ageMap.put(age, ageMap.getOrDefault(age, 0) + 1);
                         }
                     }
                 }
@@ -529,27 +544,31 @@ public class BuildingOutputDataPacket {
     }
     
     /**
-     * Rotates a position based on building rotation.
+     * Applies rotation to a relative position.
+     * Uses the same formula as BlockPlacementScheduler.applyRotation to ensure consistency.
+     * Rotates around the origin (0, 0, 0) - same formula used for placing blocks.
+     * @param pos The relative position
+     * @param rotation Rotation in degrees (0, 90, 180, 270)
+     * @param dimensions Structure dimensions (unused, kept for compatibility)
+     * @return Rotated position
      */
-    private static BlockPos rotatePosition(BlockPos relativePos, Vec3i size, int rotation) {
-        int x = relativePos.getX();
-        int y = relativePos.getY();
-        int z = relativePos.getZ();
+    private static BlockPos applyRotation(BlockPos pos, int rotation, Vec3i dimensions) {
+        int x = pos.getX();
+        int z = pos.getZ();
         
-        // Rotation is in 90-degree increments
         switch (rotation) {
             case 90:
-                // Rotate 90 degrees clockwise: (x, y, z) -> (z, y, size.x - x - 1)
-                return new BlockPos(z, y, size.getX() - x - 1);
+                // Rotate 90 degrees clockwise around origin: (x, y, z) -> (-z, y, x)
+                return new BlockPos(-z, pos.getY(), x);
             case 180:
-                // Rotate 180 degrees: (x, y, z) -> (size.x - x - 1, y, size.z - z - 1)
-                return new BlockPos(size.getX() - x - 1, y, size.getZ() - z - 1);
+                // Rotate 180 degrees around origin: (x, y, z) -> (-x, y, -z)
+                return new BlockPos(-x, pos.getY(), -z);
             case 270:
-                // Rotate 270 degrees clockwise: (x, y, z) -> (size.z - z - 1, y, x)
-                return new BlockPos(size.getZ() - z - 1, y, x);
+                // Rotate 270 degrees clockwise around origin: (x, y, z) -> (z, y, -x)
+                return new BlockPos(z, pos.getY(), -x);
             case 0:
             default:
-                return relativePos;
+                return pos;
         }
     }
 }

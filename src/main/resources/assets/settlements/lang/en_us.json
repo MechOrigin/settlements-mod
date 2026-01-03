@@ -42,12 +42,18 @@
   "settlements.ui.settings.title": "Settings",
   "settlements.ui.settings.coming_soon": "Settings coming soon.",
   
+  "settlements.structure_category.capital": "Capital",
   "settlements.structure_category.defensive": "Defensive",
   "settlements.structure_category.residential": "Residential",
   "settlements.structure_category.commercial": "Commercial",
   "settlements.structure_category.industrial": "Industrial",
   "settlements.structure_category.decorative": "Decorative",
   "settlements.structure_category.misc": "Miscellaneous",
+  
+  "key.settlements.toggle_ui_debug": "Toggle UI Debug Titles",
+  "key.settlements.toggle_building_debug": "Toggle Building Debug Outline",
+  "key.categories.settlements": "Settlements Mod",
+  "category.settlements.debug": "Settlements Debug",
   
   "settlements.hire.success": "Hired %s for %s emeralds!",
   "settlements.hire.insufficient_emeralds": "Not enough emeralds! Need %s, have %s",

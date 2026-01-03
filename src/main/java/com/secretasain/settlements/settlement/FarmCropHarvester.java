@@ -109,46 +109,49 @@ public class FarmCropHarvester {
         BlockPos buildingPos = building.getPosition();
         int rotation = building.getRotation();
         
-        // Get structure dimensions
-        Vec3i size = structureData.getDimensions();
-        
-        // Scan all blocks in the structure area
-        for (int x = 0; x < size.getX(); x++) {
-            for (int y = 0; y < size.getY(); y++) {
-                for (int z = 0; z < size.getZ(); z++) {
-                    BlockPos relativePos = new BlockPos(x, y, z);
-                    
-                    // Apply rotation to relative position
-                    BlockPos rotatedPos = rotatePosition(relativePos, size, rotation);
-                    
-                    // Convert to world position
-                    BlockPos worldPos = buildingPos.add(rotatedPos);
-                    
-                    // Check if chunk is loaded
-                    if (!world.getChunkManager().isChunkLoaded(worldPos.getX() >> 4, worldPos.getZ() >> 4)) {
+        // CRITICAL: Iterate through actual structure blocks (same as BlockPlacementScheduler)
+        // This ensures we scan exactly the same area where blocks were placed, including rotation
+        for (net.minecraft.util.math.BlockPos relativePos : structureData.getBuildOrder()) {
+            com.secretasain.settlements.building.StructureBlock structureBlock = structureData.getBlockAt(relativePos);
+            if (structureBlock == null) {
+                continue;
+            }
+            
+            // Apply rotation to relative position (same formula as BlockPlacementScheduler)
+            BlockPos rotatedPos = applyRotation(relativePos, rotation, structureData.getDimensions());
+            
+            // Calculate absolute world position
+            BlockPos worldPos = buildingPos.add(rotatedPos);
+            
+            // Check if chunk is loaded
+            if (!world.getChunkManager().isChunkLoaded(worldPos.getX() >> 4, worldPos.getZ() >> 4)) {
+                continue;
+            }
+            
+            // Check if this structure block is farmland (from the NBT structure)
+            BlockState structureBlockState = structureBlock.getBlockState();
+            if (structureBlockState.getBlock() instanceof FarmlandBlock ||
+                structureBlockState.getBlock() == Blocks.DIRT ||
+                structureBlockState.getBlock() == Blocks.GRASS_BLOCK) {
+                // This position should be farmland - check if it actually is farmland in the world
+                BlockState worldBlockState = world.getBlockState(worldPos);
+                Block worldBlock = worldBlockState.getBlock();
+                
+                // Check if this is farmland in the world
+                if (worldBlock instanceof FarmlandBlock) {
+                    // Check the block above for crops
+                    BlockPos cropPos = worldPos.up();
+                    if (!world.getChunkManager().isChunkLoaded(cropPos.getX() >> 4, cropPos.getZ() >> 4)) {
                         continue;
                     }
                     
-                    // Get block state
-                    BlockState blockState = world.getBlockState(worldPos);
-                    Block block = blockState.getBlock();
+                    BlockState cropState = world.getBlockState(cropPos);
+                    Block cropBlock = cropState.getBlock();
                     
-                    // Check if this is farmland
-                    if (block instanceof FarmlandBlock) {
-                        // Check the block above for crops
-                        BlockPos cropPos = worldPos.up();
-                        if (!world.getChunkManager().isChunkLoaded(cropPos.getX() >> 4, cropPos.getZ() >> 4)) {
-                            continue;
-                        }
-                        
-                        BlockState cropState = world.getBlockState(cropPos);
-                        Block cropBlock = cropState.getBlock();
-                        
-                        // Check if crop is mature and harvestable
-                        if (isMatureCrop(cropState, cropBlock)) {
-                            List<ItemStack> drops = harvestCrop(cropPos, cropState, cropBlock, world, server);
-                            harvestedItems.addAll(drops);
-                        }
+                    // Check if crop is mature and harvestable
+                    if (isMatureCrop(cropState, cropBlock)) {
+                        List<ItemStack> drops = harvestCrop(cropPos, cropState, cropBlock, world, server);
+                        harvestedItems.addAll(drops);
                     }
                 }
             }
@@ -166,27 +169,31 @@ public class FarmCropHarvester {
     }
     
     /**
-     * Rotates a position based on building rotation.
+     * Applies rotation to a relative position.
+     * Uses the same formula as BlockPlacementScheduler.applyRotation to ensure consistency.
+     * Rotates around the origin (0, 0, 0) - same formula used for placing blocks.
+     * @param pos The relative position
+     * @param rotation Rotation in degrees (0, 90, 180, 270)
+     * @param dimensions Structure dimensions (unused, kept for compatibility)
+     * @return Rotated position
      */
-    private static BlockPos rotatePosition(BlockPos relativePos, Vec3i size, int rotation) {
-        int x = relativePos.getX();
-        int y = relativePos.getY();
-        int z = relativePos.getZ();
+    private static BlockPos applyRotation(BlockPos pos, int rotation, Vec3i dimensions) {
+        int x = pos.getX();
+        int z = pos.getZ();
         
-        // Rotation is in 90-degree increments
         switch (rotation) {
             case 90:
-                // Rotate 90 degrees clockwise: (x, y, z) -> (z, y, size.x - x - 1)
-                return new BlockPos(z, y, size.getX() - x - 1);
+                // Rotate 90 degrees clockwise around origin: (x, y, z) -> (-z, y, x)
+                return new BlockPos(-z, pos.getY(), x);
             case 180:
-                // Rotate 180 degrees: (x, y, z) -> (size.x - x - 1, y, size.z - z - 1)
-                return new BlockPos(size.getX() - x - 1, y, size.getZ() - z - 1);
+                // Rotate 180 degrees around origin: (x, y, z) -> (-x, y, -z)
+                return new BlockPos(-x, pos.getY(), -z);
             case 270:
-                // Rotate 270 degrees clockwise: (x, y, z) -> (size.z - z - 1, y, x)
-                return new BlockPos(size.getZ() - z - 1, y, x);
+                // Rotate 270 degrees clockwise around origin: (x, y, z) -> (z, y, -x)
+                return new BlockPos(z, pos.getY(), -x);
             case 0:
             default:
-                return relativePos;
+                return pos;
         }
     }
     

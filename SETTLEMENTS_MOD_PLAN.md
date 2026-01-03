@@ -2302,6 +2302,207 @@ src/main/
 
 ---
 
+## Phase 6: Barracks & Warband System
+
+### 6.1 Barracks Building & UI Integration
+**Goal**: Add barracks building type and integrate into settlement UI system
+
+**Tasks**:
+- [ ] Create barracks structure file
+  - [ ] Design and create `lvl1_barracks.nbt` structure file
+  - [ ] Add barracks to building outputs config (no outputs, cannot assign villagers)
+  - [ ] Register barracks structure in structure registry
+- [ ] Integrate barracks into buildings tab
+  - [ ] Add barracks to buildings list widget
+  - [ ] Ensure barracks shows "0/1" UI element but displays as "X/0" (X = number of hired NPCs)
+  - [ ] Prevent villager assignment to barracks building
+  - [ ] Add barracks building entry in buildings list (same as other buildings)
+- [ ] Create warband tab UI
+  - [ ] Create `WarbandScreen.java` extending `Screen`
+  - [ ] Add "Warband" tab accessible from Villagers tab when barracks building is selected
+  - [ ] Design UI layout with 3 panels at top center (reference: settlements-barracks-feature.png)
+  - [ ] Implement panel layout for class selection (Warrior, Priest, Mage)
+  - [ ] Gray out Priest and Mage panels (not implemented yet)
+  - [ ] Add tooltip for grayed out classes: "Not implemented yet"
+- [ ] Implement warband panel widget
+  - [ ] Create `WarbandPanelWidget.java` class
+  - [ ] Display NPC class name (Warrior, Priest, Mage)
+  - [ ] Display Paragon level (I, II, III, IV)
+  - [ ] Implement 3D NPC render preview (use villager model with armor)
+  - [ ] Display gear type (stone/copper, iron, diamond, netherite)
+  - [ ] Add panel state: available, hired, locked
+  - [ ] Implement grayed-out state for hired NPCs with tooltip: "Already assigned to player"
+
+### 6.2 NPC System Foundation
+**Goal**: Create custom NPC entity system using villager model
+
+**Tasks**:
+- [ ] Create base NPC entity class
+  - [ ] Create `WarbandNpcEntity.java` extending `VillagerEntity` or `PathAwareEntity`
+  - [ ] Use villager model for rendering
+  - [ ] Set entity as friendly to player (not neutral or hostile)
+  - [ ] Implement custom AI for following player and combat
+  - [ ] Store NPC data: class type, paragon level, hired status, player UUID
+- [ ] Create NPC class system
+  - [ ] Create `NpcClass.java` enum (WARRIOR, PRIEST, MAGE)
+  - [ ] Create `NpcClassData.java` class to store class-specific data
+  - [ ] Create `ParagonLevel.java` enum (I, II, III, IV)
+  - [ ] Create `ParagonLevelData.java` class to store level requirements and gear
+- [ ] Implement gear system
+  - [ ] Create `NpcGear.java` class to store equipment (sword, shield, armor)
+  - [ ] Define gear sets for each Paragon level:
+    - [ ] Paragon I: Stone sword, shield, copper armor (level requirement: 1)
+    - [ ] Paragon II: Iron sword, shield, iron armor (level requirement: TBD)
+    - [ ] Paragon III: Diamond sword, shield, diamond armor (level requirement: TBD)
+    - [ ] Paragon IV: Netherite sword, shield, netherite armor (level requirement: TBD)
+  - [ ] Implement gear application to NPC entity on spawn
+  - [ ] Ensure warriors always have sword, shield, and armor
+
+### 6.3 NPC Hiring & Management System
+**Goal**: Implement NPC hiring, dismissal, and player data persistence
+
+**Tasks**:
+- [ ] Implement hiring system
+  - [ ] Create `HireNpcPacket.java` for client-server communication
+  - [ ] Implement server-side hiring logic
+    - [ ] Check player level requirement for requested paragon level
+    - [ ] Validate barracks building exists
+    - [ ] Spawn NPC entity at barracks location
+    - [ ] Equip NPC with appropriate gear based on paragon level
+    - [ ] Mark NPC as hired and assign to player UUID
+    - [ ] Update barracks building data (increment hired count)
+  - [ ] Update warband UI after hiring (gray out panel, show "assigned to player")
+- [ ] Implement NPC dismissal system
+  - [ ] Create `DismissNpcPacket.java` for client-server communication
+  - [ ] Implement dismissal logic
+    - [ ] Remove NPC from world (enderman teleport effect, then despawn)
+    - [ ] Update barracks building data (decrement hired count)
+    - [ ] Update warband UI (enable panel, remove "assigned to player" state)
+- [ ] Implement player data persistence
+  - [ ] Create `PlayerWarbandData.java` class extending `PersistentState`
+  - [ ] Store hired NPC data per player (UUID, class, paragon level, entity UUID)
+  - [ ] Save/load player warband data on world save/load
+  - [ ] Handle NPC entity restoration on world load (spawn if player is online)
+
+### 6.4 NPC Behavior & Interaction System
+**Goal**: Implement NPC AI, player following, combat, and interaction menu
+
+**Tasks**:
+- [ ] Implement NPC following behavior
+  - [ ] Create `NpcFollowGoal.java` extending `Goal`
+  - [ ] Make NPC follow player within reasonable distance
+  - [ ] Handle chunk unloading (NPC stays in position when chunk unloads)
+  - [ ] Implement "stay" command (NPC stops following and stays at current position)
+- [ ] Implement NPC combat AI
+  - [ ] Create `NpcCombatGoal.java` extending `Goal`
+  - [ ] Implement defensive mode (only attack if player is attacked)
+  - [ ] Implement aggressive mode (attack hostile mobs within 16 blocks of player)
+  - [ ] Ensure NPC uses equipped sword and shield correctly
+- [ ] Implement NPC interaction menu
+  - [ ] Create `NpcInteractionScreen.java` extending `Screen`
+  - [ ] Add right-click handler on NPC entity to open interaction screen
+  - [ ] Add "Stay Here" button (sets stay position, stops following)
+  - [ ] Add "Defensive Mode" / "Aggressive Mode" toggle button
+  - [ ] Add "Dismiss" button (dismisses NPC, returns to barracks)
+  - [ ] Store interaction state (follow/stay, defensive/aggressive) in NPC data
+- [ ] Implement state persistence
+  - [ ] Save NPC state (follow/stay, defensive/aggressive, stay position) in player data
+  - [ ] Restore NPC state on world load
+  - [ ] Handle player logout (NPC stays in world at last position)
+
+**Technical Notes**:
+- NPCs use villager model but are custom entities (extend PathAwareEntity or VillagerEntity)
+- NPCs are friendly to player (not neutral or hostile) - set via entity flags
+- Gear is applied via `EntityEquipStack()` for armor and held items
+- Level requirements should scale appropriately (e.g., level 1, 10, 20, 30 for paragons I-IV)
+- NPC data stored in player-specific persistent state (separate from settlement data)
+- Priest and Mage classes are locked for future implementation
+
+---
+
+## Bugs & UI Issues
+
+### UI Refresh & Dynamic Update Issues
+**Goal**: Fix all UI elements to refresh dynamically in real-time
+
+**Tasks**:
+- [ ] Fix buildings tab refresh issues
+  - [ ] Implement real-time refresh for buildings list widget
+  - [ ] Add refresh triggers when buildings change (construction complete, new building added)
+  - [ ] Remove need to close and reopen UI to see updates
+  - [ ] Ensure all building data updates reflect immediately in UI
+- [ ] Fix villagers tab refresh issues
+  - [ ] Implement real-time refresh for villagers list widget
+  - [ ] Add refresh triggers when villagers change (hired, fired, assigned, unassigned)
+  - [ ] Remove need to close and reopen UI to see updates
+  - [ ] Ensure villager employment status updates immediately
+- [ ] Fix building outputs widget refresh
+  - [ ] Ensure building outputs update dynamically when data changes
+  - [ ] Remove UI overlay issues when switching tabs
+  - [ ] Fix widget state persistence across tab switches
+
+### UI Overlap & Layout Issues
+**Goal**: Fix all overlapping UI elements, text, icons, and tooltips
+
+**Tasks**:
+- [ ] Fix buildings tab left-most UI element (NBT buildings list)
+  - [ ] Fix overlapping UI elements when switching tabs
+  - [ ] Remove overlay artifacts on tab switch
+  - [ ] Fix text and icon overlap in commercial buildings section
+  - [ ] Ensure proper spacing between list items
+  - [ ] Fix list overflow past defined UI boundaries
+- [ ] Fix required materials and building outputs widget overlap
+  - [ ] Fix widgets overlapping constantly
+  - [ ] Ensure proper spacing and centering
+  - [ ] Prevent lists and tabs from bleeding over each other
+  - [ ] Fix tooltip overlap issues
+  - [ ] Center and organize all UI elements properly
+- [ ] Fix villagers tab UI issues
+  - [ ] Apply all overlap fixes to villagers tab
+  - [ ] Fix building widget overlap issues
+  - [ ] Ensure proper spacing in building assignment list
+- [ ] Implement building type accordion/collapsing
+  - [ ] Create accordion widget for grouping similar buildings
+  - [ ] Group buildings by type (e.g., all "lvl1 Oak Wall" buildings together)
+  - [ ] Add expand/collapse functionality
+  - [ ] Ensure villager assignment still works with accordion (account for extra click)
+  - [ ] Test that accordion doesn't break existing functionality
+
+### Research & Best Practices
+**Tasks**:
+- [ ] Research Minecraft UI text formatting best practices
+  - [ ] Study TextRenderer API and proper text rendering
+  - [ ] Research proper spacing and alignment techniques
+  - [ ] Document findings in cursor rules file
+- [ ] Create comprehensive UI formatting rules
+  - [ ] Document text rendering best practices
+  - [ ] Document widget spacing and layout rules
+  - [ ] Document tooltip positioning rules
+  - [ ] Create reusable UI utility classes if needed
+
+### Logging Cleanup
+**Goal**: Comment out excessive logging to improve performance
+
+**Tasks**:
+- [ ] Review all logging statements
+  - [ ] Identify info-level logging that is excessive
+  - [ ] Keep error and warning logs
+  - [ ] Comment out or remove debug/info logs that fire frequently
+- [ ] Comment out excessive logging
+  - [ ] Reference debug logs from terminal output (lines 2-993)
+  - [ ] Comment out SettlementManager.saveData() logging
+  - [ ] Comment out building status logging
+  - [ ] Comment out villager pathfinding logging (keep errors/warnings)
+  - [ ] Comment out farm maintenance logging (keep errors/warnings)
+  - [ ] Comment out other frequent info-level logs
+- [ ] Verify critical logs remain
+  - [ ] Ensure error logs remain active
+  - [ ] Ensure warning logs remain active
+  - [ ] Keep initialization logs (mod startup)
+  - [ ] Test that debugging is still possible when needed
+
+---
+
 ## Questions & Considerations
 
 1. **Settlement Radius**: What should be the default radius? (Suggested: 64-128 blocks)
@@ -2310,6 +2511,9 @@ src/main/
 4. **Material Storage**: Store in lectern inventory or separate storage block?
 5. **Multi-Settlement**: Can multiple settlements exist? How to handle overlaps?
 6. **Barrier Blocks**: Use actual barrier blocks or custom invisible blocks?
+7. **NPC Level Requirements**: What player levels should be required for each Paragon level? (Suggested: 1, 10, 20, 30)
+8. **NPC Following Distance**: What distance should NPCs maintain from player? (Suggested: 5-10 blocks)
+9. **NPC Combat Range**: What range for aggressive mode attacks? (Suggested: 16 blocks as specified)
 
 ---
 

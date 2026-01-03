@@ -37,8 +37,8 @@ public class WanderingTraderDespawnHandler {
             long spawnTime = trader.getWorld().getTime();
             UUID traderId = trader.getUuid();
             TRADER_SPAWN_TIMES.put(traderId, spawnTime);
-            SettlementsMod.LOGGER.info("Recorded wandering trader spawn: {} at tick {} (will despawn after {} ticks = {} minutes). Total tracked: {}", 
-                traderId, spawnTime, TRADER_LIFETIME, TRADER_LIFETIME / 1200, TRADER_SPAWN_TIMES.size());
+            // SettlementsMod.LOGGER.info("Recorded wandering trader spawn: {} at tick {} (will despawn after {} ticks = {} minutes). Total tracked: {}", 
+            //     traderId, spawnTime, TRADER_LIFETIME, TRADER_LIFETIME / 1200, TRADER_SPAWN_TIMES.size());
         }
     }
     
@@ -80,14 +80,14 @@ public class WanderingTraderDespawnHandler {
             trader -> true
         );
         
-        // Always log when we check (for debugging) - but reduce frequency to avoid spam
+        // Always log when we check (for debugging) - but reduce frequency to avoid spam (commented out - excessive logging)
         // If we have tracked traders, log more frequently
-        if (TRADER_SPAWN_TIMES.size() > 0 || allTraders.size() > 0) {
-            if (currentTime % 20 == 0) { // Every second when we have traders
-                SettlementsMod.LOGGER.info("Wandering trader despawn check: {} traders in world, {} tracked (world time: {})", 
-                    allTraders.size(), TRADER_SPAWN_TIMES.size(), currentTime);
-            }
-        }
+        // if (TRADER_SPAWN_TIMES.size() > 0 || allTraders.size() > 0) {
+        //     if (currentTime % 20 == 0) { // Every second when we have traders
+        //         SettlementsMod.LOGGER.info("Wandering trader despawn check: {} traders in world, {} tracked (world time: {})", 
+        //             allTraders.size(), TRADER_SPAWN_TIMES.size(), currentTime);
+        //     }
+        // }
         
         // Track any traders we haven't seen before
         for (WanderingTraderEntity trader : allTraders) {
@@ -122,11 +122,11 @@ public class WanderingTraderDespawnHandler {
                 if (elapsed >= TRADER_LIFETIME) {
                     // Lifetime expired - mark for despawn
                     tradersToDespawn.add(traderId);
-                    SettlementsMod.LOGGER.info("Trader {} has been alive for {} ticks (lifetime: {} ticks), marking for despawn", 
-                        traderId, elapsed, TRADER_LIFETIME);
-                } else if (remaining <= 100 && currentTime % 20 == 0) { // Log when less than 5 seconds remaining
-                    SettlementsMod.LOGGER.info("Trader {} will despawn in {} ticks ({} seconds) - elapsed: {} ticks", 
-                        traderId, remaining, remaining / 20, elapsed);
+                    // SettlementsMod.LOGGER.info("Trader {} has been alive for {} ticks (lifetime: {} ticks), marking for despawn", 
+                    //     traderId, elapsed, TRADER_LIFETIME);
+                } else if (remaining <= 100 && currentTime % 20 == 0) { // Log when less than 5 seconds remaining (commented out - excessive logging)
+                    // SettlementsMod.LOGGER.info("Trader {} will despawn in {} ticks ({} seconds) - elapsed: {} ticks", 
+                    //     traderId, remaining, remaining / 20, elapsed);
                 }
             } else {
                 // Trader not in this world - check if it exists in any world

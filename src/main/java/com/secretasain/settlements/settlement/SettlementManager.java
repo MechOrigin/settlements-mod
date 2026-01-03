@@ -45,13 +45,13 @@ public class SettlementManager {
         settlements.clear();
         lecternToSettlement.clear();
         
-        com.secretasain.settlements.SettlementsMod.LOGGER.info("SettlementManager.loadData(): Loading {} settlements from persistent data", 
-            persistentData.getSettlements().size());
+        // com.secretasain.settlements.SettlementsMod.LOGGER.info("SettlementManager.loadData(): Loading {} settlements from persistent data", 
+        //     persistentData.getSettlements().size());
         
         for (Map.Entry<UUID, Settlement> entry : persistentData.getSettlements().entrySet()) {
             settlements.put(entry.getKey(), entry.getValue());
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("  - Loaded settlement {} (lectern at {}): {} buildings", 
-                entry.getKey(), entry.getValue().getLecternPos(), entry.getValue().getBuildings().size());
+            // com.secretasain.settlements.SettlementsMod.LOGGER.info("  - Loaded settlement {} (lectern at {}): {} buildings", 
+            //     entry.getKey(), entry.getValue().getLecternPos(), entry.getValue().getBuildings().size());
         }
         
         for (Map.Entry<BlockPos, UUID> entry : persistentData.getLecternToSettlement().entrySet()) {
@@ -59,8 +59,8 @@ public class SettlementManager {
         }
         
         dataLoaded = true;
-        com.secretasain.settlements.SettlementsMod.LOGGER.info("SettlementManager.loadData(): Loaded {} settlements, {} lectern mappings", 
-            settlements.size(), lecternToSettlement.size());
+        // com.secretasain.settlements.SettlementsMod.LOGGER.info("SettlementManager.loadData(): Loaded {} settlements, {} lectern mappings", 
+        //     settlements.size(), lecternToSettlement.size());
     }
     
     /**
@@ -78,16 +78,16 @@ public class SettlementManager {
             loadData();
         }
         
-        // DEBUG: Log building counts before saving
-        com.secretasain.settlements.SettlementsMod.LOGGER.info("SettlementManager.saveData(): Saving {} settlements", settlements.size());
-        for (java.util.Map.Entry<UUID, Settlement> entry : settlements.entrySet()) {
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("  - Settlement {} (lectern at {}): {} buildings", 
-                entry.getKey(), entry.getValue().getLecternPos(), entry.getValue().getBuildings().size());
-            for (com.secretasain.settlements.settlement.Building building : entry.getValue().getBuildings()) {
-                com.secretasain.settlements.SettlementsMod.LOGGER.info("    - Building {}: {} at {} (status: {})", 
-                    building.getId(), building.getStructureType(), building.getPosition(), building.getStatus());
-            }
-        }
+        // DEBUG: Log building counts before saving (commented out - excessive logging)
+        // com.secretasain.settlements.SettlementsMod.LOGGER.info("SettlementManager.saveData(): Saving {} settlements", settlements.size());
+        // for (java.util.Map.Entry<UUID, Settlement> entry : settlements.entrySet()) {
+        //     com.secretasain.settlements.SettlementsMod.LOGGER.info("  - Settlement {} (lectern at {}): {} buildings", 
+        //         entry.getKey(), entry.getValue().getLecternPos(), entry.getValue().getBuildings().size());
+        //     for (com.secretasain.settlements.settlement.Building building : entry.getValue().getBuildings()) {
+        //         com.secretasain.settlements.SettlementsMod.LOGGER.info("    - Building {}: {} at {} (status: {})", 
+        //             building.getId(), building.getStructureType(), building.getPosition(), building.getStatus());
+        //     }
+        // }
         
         // Sync data to persistent storage
         // CRITICAL: Clear persistent data first, then copy from in-memory map
@@ -101,13 +101,13 @@ public class SettlementManager {
         
         persistentData.markDirty();
         
-        // DEBUG: Verify buildings are in persistent data (should be same objects)
-        com.secretasain.settlements.SettlementsMod.LOGGER.info("SettlementManager.saveData(): Persistent data now has {} settlements", 
-            persistentData.getSettlements().size());
-        for (java.util.Map.Entry<UUID, Settlement> entry : persistentData.getSettlements().entrySet()) {
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("  - Settlement {} (lectern at {}): {} buildings", 
-                entry.getKey(), entry.getValue().getLecternPos(), entry.getValue().getBuildings().size());
-        }
+        // DEBUG: Verify buildings are in persistent data (should be same objects) (commented out - excessive logging)
+        // com.secretasain.settlements.SettlementsMod.LOGGER.info("SettlementManager.saveData(): Persistent data now has {} settlements", 
+        //     persistentData.getSettlements().size());
+        // for (java.util.Map.Entry<UUID, Settlement> entry : persistentData.getSettlements().entrySet()) {
+        //     com.secretasain.settlements.SettlementsMod.LOGGER.info("  - Settlement {} (lectern at {}): {} buildings", 
+        //         entry.getKey(), entry.getValue().getLecternPos(), entry.getValue().getBuildings().size());
+        // }
     }
 
     /**
@@ -181,13 +181,13 @@ public class SettlementManager {
             return null;
         }
         
-        // DEBUG: Log building count when retrieving settlement
-        com.secretasain.settlements.SettlementsMod.LOGGER.info("SettlementManager.getSettlementByLectern(): Retrieved settlement {} (lectern at {}) with {} buildings", 
-            settlement.getId(), lecternPos, settlement.getBuildings().size());
-        for (com.secretasain.settlements.settlement.Building building : settlement.getBuildings()) {
-            com.secretasain.settlements.SettlementsMod.LOGGER.info("  - Building {}: {} at {} (status: {})", 
-                building.getId(), building.getStructureType(), building.getPosition(), building.getStatus());
-        }
+        // DEBUG: Log building count when retrieving settlement (commented out - excessive logging)
+        // com.secretasain.settlements.SettlementsMod.LOGGER.info("SettlementManager.getSettlementByLectern(): Retrieved settlement {} (lectern at {}) with {} buildings", 
+        //     settlement.getId(), lecternPos, settlement.getBuildings().size());
+        // for (com.secretasain.settlements.settlement.Building building : settlement.getBuildings()) {
+        //     com.secretasain.settlements.SettlementsMod.LOGGER.info("  - Building {}: {} at {} (status: {})", 
+        //         building.getId(), building.getStructureType(), building.getPosition(), building.getStatus());
+        // }
         
         // CRITICAL: Verify this is the same object that's in persistent data (should be after saveData)
         if (persistentData != null && persistentData.getSettlements().containsKey(id)) {

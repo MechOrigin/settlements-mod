@@ -134,7 +134,7 @@ public class VillagerDepositSystem {
             // If just arrived, record arrival time
             if (arrivalTime == 0) {
                 villagerData.setChestArrivalTime(currentTime);
-                SettlementsMod.LOGGER.info("Villager {} arrived at chest at time {}", villagerData.getEntityId(), currentTime);
+                // SettlementsMod.LOGGER.info("Villager {} arrived at chest at time {}", villagerData.getEntityId(), currentTime);
                 SettlementManager.getInstance(world).markDirty();
                 return; // Wait for next tick
             }
@@ -158,8 +158,8 @@ public class VillagerDepositSystem {
                 villagerData.setChestArrivalTime(0);
                 SettlementManager.getInstance(world).markDirty();
                 
-                SettlementsMod.LOGGER.info("Villager {} completed deposit trip after {} ticks at chest", 
-                    villagerData.getEntityId(), timeAtChest);
+                // SettlementsMod.LOGGER.info("Villager {} completed deposit trip after {} ticks at chest", 
+                //     villagerData.getEntityId(), timeAtChest);
             } else {
                 // No chests found, but clear items anyway (they're "deposited" to settlement storage)
                 // This prevents villagers from getting stuck if no chests are placed

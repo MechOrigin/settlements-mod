@@ -19,6 +19,8 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.world.GameMode;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -177,13 +179,52 @@ public class BlockPlacementScheduler {
         }
         
         /**
+         * Checks if any player in creative mode is nearby any building under construction.
+         * @param world The server world
+         * @return true if a creative mode player is within 64 blocks of any building
+         */
+        private boolean isCreativeModePlayerNearby(ServerWorld world) {
+            // Check all players in the world
+            for (ServerPlayerEntity player : world.getPlayers()) {
+                // Check if player is in creative mode
+                if (player.interactionManager.getGameMode() == GameMode.CREATIVE || 
+                    player.interactionManager.getGameMode() == GameMode.SPECTATOR) {
+                    // Check if player is near any building under construction
+                    BlockPos playerPos = player.getBlockPos();
+                    
+                    // Check all buildings in all settlements
+                    SettlementManager manager = SettlementManager.getInstance(world);
+                    for (Settlement settlement : manager.getAllSettlements()) {
+                        for (Building building : settlement.getBuildings()) {
+                            // Only check buildings that are in progress
+                            if (building.getStatus() == com.secretasain.settlements.building.BuildingStatus.IN_PROGRESS) {
+                                BlockPos buildingPos = building.getPosition();
+                                // Check if player is within 64 blocks of the building
+                                double distanceSq = playerPos.getSquaredDistance(buildingPos);
+                                if (distanceSq <= 64 * 64) { // 64 blocks radius
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+        
+        /**
          * Performs a tick update.
          */
         public void tick(ServerWorld world) {
             tickCounter++;
             
+            // Check if any player in creative mode is nearby any building
+            // If so, speed up construction by 100% (half the tick delay)
+            boolean creativeModeActive = isCreativeModePlayerNearby(world);
+            int effectiveTickDelay = creativeModeActive ? TICK_DELAY / 2 : TICK_DELAY;
+            
             // Only process every N ticks
-            if (tickCounter < TICK_DELAY) {
+            if (tickCounter < effectiveTickDelay) {
                 return;
             }
             tickCounter = 0;
@@ -223,8 +264,11 @@ public class BlockPlacementScheduler {
                 }
                 
                 // Place blocks
+                // In creative mode, place 2 blocks per cycle instead of 1 (100% speed increase)
+                int effectiveBlocksPerTick = creativeModeActive ? BLOCKS_PER_TICK * 2 : BLOCKS_PER_TICK;
+                
                 int blocksPlaced = 0;
-                while (!queue.isEmpty() && blocksPlaced < BLOCKS_PER_TICK) {
+                while (!queue.isEmpty() && blocksPlaced < effectiveBlocksPerTick) {
                     QueuedBlock queuedBlock = queue.getNextBlock();
                     if (queuedBlock != null) {
                         if (placeBlock(queuedBlock, world, building)) {

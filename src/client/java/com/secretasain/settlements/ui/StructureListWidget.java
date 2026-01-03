@@ -87,8 +87,9 @@ public class StructureListWidget extends AlwaysSelectedEntryListWidget<Structure
         Map<StructureCategory, List<String>> structuresByCategory = structureNames.stream()
             .collect(Collectors.groupingBy(StructureCategory::fromStructureName));
         
-        // Sort categories by display order
+        // Sort categories by display order (Capital first, then others)
         List<StructureCategory> sortedCategories = Arrays.asList(
+            StructureCategory.CAPITAL,
             StructureCategory.DEFENSIVE,
             StructureCategory.RESIDENTIAL,
             StructureCategory.COMMERCIAL,
@@ -174,48 +175,89 @@ public class StructureListWidget extends AlwaysSelectedEntryListWidget<Structure
         // Use exact bounds - no padding or offsets to ensure perfect alignment with button
         context.fill(x, y, x + width, y + height, 0xFF101010); // Dark gray background for list area
         
+        // Render debug title if enabled
+        UIDebugRenderer.renderWidgetTitle(context, "StructureListWidget", x, y, width);
+        
         // NO border here - the sidebar already has a border, we don't need another one
         // NO extra padding - we want exact alignment with the button below
         
-        // Render entries manually WITHOUT calling super.render() to avoid parent's background
-        int scrollAmount = (int)this.getScrollAmount();
-        int startIndex = Math.max(0, scrollAmount / this.itemHeight);
-        int endIndex = Math.min(this.children().size(), startIndex + (height / this.itemHeight) + 2);
+        // Enable scissor clipping to prevent overflow outside widget bounds
+        context.enableScissor(x, y, x + width, y + height);
         
-        for (int i = startIndex; i < endIndex && i < this.children().size(); i++) {
-            StructureEntry entry = this.children().get(i);
-            int entryY = y + (i * this.itemHeight) - scrollAmount;
+        try {
+            // Render entries manually WITHOUT calling super.render() to avoid parent's background
+            int scrollAmount = (int)this.getScrollAmount();
+            int startIndex = Math.max(0, scrollAmount / this.itemHeight);
+            int endIndex = Math.min(this.children().size(), startIndex + (height / this.itemHeight) + 2);
             
-            if (entryY + this.itemHeight >= y && entryY <= y + height) {
-                // Render category header if needed
+            // Count headers before startIndex to adjust positioning
+            int headersBeforeStart = 0;
+            for (int j = 0; j < startIndex && j < this.children().size(); j++) {
+                if (shouldShowCategoryHeader(j)) {
+                    headersBeforeStart++;
+                }
+            }
+            
+            int visualIndex = startIndex + headersBeforeStart;
+            for (int i = startIndex; i < endIndex && i < this.children().size(); i++) {
+                StructureEntry entry = this.children().get(i);
+                
+                // Render category header if needed (before the entry)
                 if (shouldShowCategoryHeader(i)) {
                     StructureCategory category = entry.getCategory();
                     CategoryHeaderEntry header = new CategoryHeaderEntry(category);
-                    int headerY = entryY - this.itemHeight;
-                    if (headerY >= y - this.itemHeight) {
+                    int headerY = y + (visualIndex * this.itemHeight) - scrollAmount;
+                    if (headerY >= y - this.itemHeight && headerY <= y + height) {
                         header.render(context, i, headerY, x, width, this.itemHeight, mouseX, mouseY, false, delta);
                     }
+                    visualIndex++;
                 }
                 
-                boolean isSelected = this.getSelectedOrNull() == entry;
-                boolean isHovered = mouseX >= x && mouseX <= x + width && 
-                                   mouseY >= entryY && mouseY <= entryY + this.itemHeight;
-                entry.render(context, i, entryY, x, width, this.itemHeight, mouseX, mouseY, isSelected || isHovered, delta);
+                // Render entry
+                int entryY = y + (visualIndex * this.itemHeight) - scrollAmount;
+                if (entryY + this.itemHeight >= y && entryY <= y + height) {
+                    boolean isSelected = this.getSelectedOrNull() == entry;
+                    boolean isHovered = mouseX >= x && mouseX <= x + width && 
+                                       mouseY >= entryY && mouseY <= entryY + this.itemHeight;
+                    entry.render(context, i, entryY, x, width, this.itemHeight, mouseX, mouseY, isSelected || isHovered, delta);
+                }
+                visualIndex++;
+            }
+            
+            // Render scrollbar if needed - position it inside the widget bounds
+            int maxScroll = this.getMaxScroll();
+            if (maxScroll > 0) {
+                int scrollbarWidth = 4;
+                int scrollbarPadding = 2; // Padding from right edge
+                int scrollbarX = x + width - scrollbarWidth - scrollbarPadding; // Position inside widget
+                int scrollbarHeight = Math.max(4, (int)((height / (float)(maxScroll + height)) * height));
+                int scrollbarY = y + (int)((scrollAmount / (float)maxScroll) * (height - scrollbarHeight));
+                // Make sure scrollbar stays within bounds
+                scrollbarY = Math.max(y, Math.min(scrollbarY, y + height - scrollbarHeight));
+                context.fill(scrollbarX, scrollbarY, scrollbarX + scrollbarWidth, scrollbarY + scrollbarHeight, 0x80FFFFFF);
+            }
+        } catch (Exception e) {
+            // Ensure scissor is disabled even if rendering fails
+            context.disableScissor();
+            throw e;
+        } finally {
+            // Always disable scissor clipping after rendering
+            context.disableScissor();
+        }
+    }
+    
+    @Override
+    public int getMaxScroll() {
+        // Calculate max scroll accounting for category headers
+        int totalVisualHeight = 0;
+        for (int i = 0; i < this.children().size(); i++) {
+            totalVisualHeight += this.itemHeight;
+            if (shouldShowCategoryHeader(i)) {
+                totalVisualHeight += this.itemHeight; // Header also takes up space
             }
         }
-        
-        // Render scrollbar if needed - position it inside the widget bounds
-        int maxScroll = this.getMaxScroll();
-        if (maxScroll > 0) {
-            int scrollbarWidth = 4;
-            int scrollbarPadding = 2; // Padding from right edge
-            int scrollbarX = x + width - scrollbarWidth - scrollbarPadding; // Position inside widget
-            int scrollbarHeight = Math.max(4, (int)((height / (float)(maxScroll + height)) * height));
-            int scrollbarY = y + (int)((scrollAmount / (float)maxScroll) * (height - scrollbarHeight));
-            // Make sure scrollbar stays within bounds
-            scrollbarY = Math.max(y, Math.min(scrollbarY, y + height - scrollbarHeight));
-            context.fill(scrollbarX, scrollbarY, scrollbarX + scrollbarWidth, scrollbarY + scrollbarHeight, 0x80FFFFFF);
-        }
+        int maxScroll = Math.max(0, totalVisualHeight - (this.bottom - this.top));
+        return maxScroll;
     }
     
     @Override
@@ -277,19 +319,40 @@ public class StructureListWidget extends AlwaysSelectedEntryListWidget<Structure
         }
         
         // Calculate which entry was clicked based on mouse position
+        // Must account for category headers taking up visual space (same logic as render method)
         int scrollAmount = (int)this.getScrollAmount();
         int relativeY = (int)(mouseY - y + scrollAmount);
-        int entryIndex = relativeY / this.itemHeight;
+        int visualIndex = relativeY / this.itemHeight;
         
-        if (entryIndex >= 0 && entryIndex < this.children().size()) {
-            StructureEntry clickedEntry = this.children().get(entryIndex);
-            // Verify the click is actually within the entry bounds
-            int entryY = y + (entryIndex * this.itemHeight) - scrollAmount;
-            if (mouseY >= entryY && mouseY <= entryY + this.itemHeight) {
-                this.setSelected(clickedEntry);
-                com.secretasain.settlements.SettlementsMod.LOGGER.info("Clicked structure entry: {}", clickedEntry.getName());
-                return true;
+        // Convert visual index to actual entry index by accounting for headers
+        // Use the same logic as render method
+        int currentVisualIndex = 0;
+        StructureEntry clickedEntry = null;
+        
+        for (int i = 0; i < this.children().size(); i++) {
+            // Check if this entry has a header before it
+            if (shouldShowCategoryHeader(i)) {
+                // Header takes up visual space
+                if (visualIndex == currentVisualIndex) {
+                    // Clicked on header, not an entry - ignore
+                    return false;
+                }
+                currentVisualIndex++;
             }
+            
+            // Entry takes up visual space
+            if (visualIndex == currentVisualIndex) {
+                clickedEntry = this.children().get(i);
+                break;
+            }
+            currentVisualIndex++;
+        }
+        
+        if (clickedEntry != null) {
+            this.setSelected(clickedEntry);
+            com.secretasain.settlements.SettlementsMod.LOGGER.info("Clicked structure entry: {} (visual index: {})", 
+                clickedEntry.getName(), visualIndex);
+            return true;
         }
         
         // Fallback to parent implementation for scrolling, etc.
@@ -392,15 +455,21 @@ public class StructureListWidget extends AlwaysSelectedEntryListWidget<Structure
                 context.fill(x + 2, y + 1, x + entryWidth - 2, y + entryHeight - 1, 0x40FFFFFF);
             }
             
+            // Apply UI formatting rules: proper icon and text spacing
+            MinecraftClient client = MinecraftClient.getInstance();
+            int padding = 4; // Widget internal padding
+            int iconSize = 16; // Standard icon size
+            int iconSpacing = 4; // Minimum 4px spacing between icon and text (UI formatting rules)
+            
             // Determine block icon based on structure name
             Block iconBlock = getBlockForStructure(name);
             ItemStack iconStack = new ItemStack(iconBlock);
             
-            // Draw compact block icon (12x12) - smaller and more elegant
-            int iconX = x + 4;
-            int iconY = y + 2;
+            // Draw icon with proper padding
+            int iconX = x + padding;
+            int iconY = y + (entryHeight - iconSize) / 2; // Center icon vertically
             context.drawItem(iconStack, iconX, iconY);
-            context.drawItemInSlot(MinecraftClient.getInstance().textRenderer, iconStack, iconX, iconY);
+            context.drawItemInSlot(client.textRenderer, iconStack, iconX, iconY);
             
             // Format name for display (remove .nbt, replace underscores with spaces, capitalize)
             String displayName = name;
@@ -418,24 +487,29 @@ public class StructureListWidget extends AlwaysSelectedEntryListWidget<Structure
                 }
             }
             
-            // Truncate long names
+            // Calculate available width for text (account for icon + spacing + padding)
             String finalName = formatted.toString();
-            int maxWidth = entryWidth - 24; // Leave room for icon and padding
-            if (MinecraftClient.getInstance().textRenderer.getWidth(finalName) > maxWidth) {
-                finalName = MinecraftClient.getInstance().textRenderer.trimToWidth(finalName, maxWidth - 3) + "...";
+            int textStartX = iconX + iconSize + iconSpacing; // After icon + spacing (relative to x)
+            // Available width = total width - (textStartX relative to entry start) - right padding
+            int textStartOffset = textStartX - x; // Offset from entry start (x)
+            int maxWidth = entryWidth - textStartOffset - padding; // Leave room for icon, spacing, and padding
+            // Only truncate if text is actually too long
+            if (maxWidth > 0 && client.textRenderer.getWidth(finalName) > maxWidth) {
+                finalName = client.textRenderer.trimToWidth(finalName, maxWidth - 3) + "...";
             }
             
-            // Draw text next to icon - compact layout
-            int textX = x + 20; // Start after icon (12px) + padding (8px)
-            int textY = y + (entryHeight - 9) / 2; // Center vertically (9 is text height)
+            // Draw text with proper spacing from icon (apply UI formatting rules)
+            // Text should be right next to icon with just the spacing offset
+            int textX = textStartX; // After icon + spacing (relative to x, not absolute)
+            int textY = y + (entryHeight - client.textRenderer.fontHeight) / 2; // Center vertically using fontHeight
             
             context.drawText(
-                MinecraftClient.getInstance().textRenderer,
-                finalName,
+                client.textRenderer,
+                Text.literal(finalName),
                 textX,
                 textY,
                 hovered ? 0xFFFFFF : 0xCCCCCC,
-                false
+                true // Use shadow for better visibility
             );
         }
         

@@ -32,6 +32,11 @@ public enum StructureCategory {
     DECORATIVE(Text.translatable("settlements.structure_category.decorative")),
     
     /**
+     * Capital structures: town halls, administrative buildings
+     */
+    CAPITAL(Text.translatable("settlements.structure_category.capital")),
+    
+    /**
      * Miscellaneous or uncategorized structures
      */
     MISC(Text.translatable("settlements.structure_category.misc"));
@@ -82,6 +87,12 @@ public enum StructureCategory {
             lower.contains("farm") || lower.contains("mill") || lower.contains("factory") ||
             lower.contains("mine") || lower.contains("quarry") || lower.contains("smithing")) {
             return INDUSTRIAL;
+        }
+        
+        // Capital structures
+        if (lower.contains("town_hall") || lower.contains("townhall") || lower.contains("capital") ||
+            lower.contains("city_hall") || lower.contains("cityhall") || lower.contains("administrative")) {
+            return CAPITAL;
         }
         
         // Decorative structures

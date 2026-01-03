@@ -123,8 +123,8 @@ public class FarmMaintenanceSystem {
                 continue; // Villager is too far from building
             }
             
-            SettlementsMod.LOGGER.info("Processing farm maintenance for building {} with villager {} (distance: {} blocks)", 
-                building.getId(), firstVillagerData.getEntityId(), String.format("%.2f", distance));
+            // SettlementsMod.LOGGER.info("Processing farm maintenance for building {} with villager {} (distance: {} blocks)", 
+            //     building.getId(), firstVillagerData.getEntityId(), String.format("%.2f", distance));
             
             // Process maintenance for this farm
             processFarmMaintenance(building, villager, world);
@@ -147,8 +147,8 @@ public class FarmMaintenanceSystem {
             // Scan for broken farmland
             scanForBrokenFarmland(building, world, state);
             
-            SettlementsMod.LOGGER.info("Farm maintenance scan for building {} found {} broken farmland blocks", 
-                buildingId, state.brokenFarmlandPositions.size());
+            // SettlementsMod.LOGGER.info("Farm maintenance scan for building {} found {} broken farmland blocks", 
+            //     buildingId, state.brokenFarmlandPositions.size());
             
             // Fix one broken farmland block
             if (!state.brokenFarmlandPositions.isEmpty()) {
@@ -246,8 +246,8 @@ public class FarmMaintenanceSystem {
                 }
             }
             
-            SettlementsMod.LOGGER.info("Farm scan complete: {} farmland blocks in structure, {} broken blocks found (total blocks in structure: {})", 
-                farmlandInStructure, brokenFarmlandFound, totalBlocksInStructure);
+            // SettlementsMod.LOGGER.info("Farm scan complete: {} farmland blocks in structure, {} broken blocks found (total blocks in structure: {})", 
+            //     farmlandInStructure, brokenFarmlandFound, totalBlocksInStructure);
             
             // Log top block types for debugging
             if (farmlandInStructure == 0 && totalBlocksInStructure > 0) {
@@ -652,18 +652,29 @@ public class FarmMaintenanceSystem {
     /**
      * Rotates a position based on building rotation.
      */
+    /**
+     * Applies rotation to a relative position.
+     * Uses the same formula as BlockPlacementScheduler.applyRotation to ensure consistency.
+     * Rotates around the origin (0, 0, 0) - same formula used for placing blocks.
+     * @param relativePos The relative position
+     * @param size Structure dimensions (unused, kept for compatibility)
+     * @param rotation Rotation in degrees (0, 90, 180, 270)
+     * @return Rotated position
+     */
     private static BlockPos rotatePosition(BlockPos relativePos, Vec3i size, int rotation) {
         int x = relativePos.getX();
-        int y = relativePos.getY();
         int z = relativePos.getZ();
         
         switch (rotation) {
             case 90:
-                return new BlockPos(z, y, size.getX() - x - 1);
+                // Rotate 90 degrees clockwise around origin: (x, y, z) -> (-z, y, x)
+                return new BlockPos(-z, relativePos.getY(), x);
             case 180:
-                return new BlockPos(size.getX() - x - 1, y, size.getZ() - z - 1);
+                // Rotate 180 degrees around origin: (x, y, z) -> (-x, y, -z)
+                return new BlockPos(-x, relativePos.getY(), -z);
             case 270:
-                return new BlockPos(size.getZ() - z - 1, y, x);
+                // Rotate 270 degrees clockwise around origin: (x, y, z) -> (z, y, -x)
+                return new BlockPos(z, relativePos.getY(), -x);
             case 0:
             default:
                 return relativePos;
