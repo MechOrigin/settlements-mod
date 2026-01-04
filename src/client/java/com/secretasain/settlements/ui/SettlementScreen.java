@@ -368,6 +368,8 @@ public class SettlementScreen extends Screen {
             "lvl1_oak_farm.nbt",
             "lvl1_oak_smithing.nbt",
             "lvl1_lumber_yard.nbt",
+            // Warband structures
+            "lvl1_barracks.nbt",
             // Misc structures
             "lvl1_town_hall.nbt"
         };

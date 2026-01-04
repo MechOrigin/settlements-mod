@@ -532,6 +532,8 @@ public class StructureListWidget extends AlwaysSelectedEntryListWidget<Structure
                 return Blocks.OAK_FENCE_GATE;
             } else if (lowerName.contains("house") || lowerName.contains("home")) {
                 return Blocks.OAK_PLANKS; // Houses use oak planks icon
+            } else if (lowerName.contains("barracks")) {
+                return Blocks.IRON_BARS; // Barracks use iron bars icon
             }
             
             // Check for material types
